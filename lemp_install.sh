@@ -24,16 +24,16 @@ INSTALL_PHP="True"
 # Set this to False if you don't need to install any database server  
 INSTALL_MYSQL="True"
 # SET this to True if you need to create a database 
-CREATE_DATABASE="False"
+CREATE_DATABASE="True" 
 # Set the database name and user you want to create
-DATABASE_NAME="exemplo_database"
+DATABASE_NAME="servidor"
 DATABASE_USER="root"
 # Set this to True if you need to install PHPMYADMIN
 INSTALL_PHPMYADMIN="True"
 # Set your domain name to be mapped 
-WEBSITE_NAME="example.com"
+WEBSITE_NAME="megastyller.com"
 # Set this to True if you need to install Free SSL for the Website
-ENABLE_SSL="True"
+ENABLE_SSL="False" 
 # Set admin email for issuing SSL
 ADMIN_EMAIL="admin@example.com"
 # Set this to True if you need to secure PhpMyAdmin installation
@@ -43,6 +43,10 @@ INSTALL_MODSECURITY="False"
 # Set this to True if you need to secure your site using .htaccess rules
 SECURE_WEBSITE="False"
 
+function generatePassword()
+{
+  echo "$(openssl rand -base64 12)"
+}
 
 if [ "$(whoami)" != 'root' ]; then
         echo "Please run this script as root user only! "
@@ -108,9 +112,7 @@ EOF
 
 sudo mv ~/$WEBSITE_NAME.conf /etc/nginx/sites-available/$WEBSITE_NAME
 sudo ln -s /etc/nginx/sites-available/$WEBSITE_NAME /etc/nginx/sites-enabled/
-sudo unlink /etc/nginx/sites-enabled/default
 sudo mkdir /var/www/$WEBSITE_NAME
-
 
 echo "CONGRATULATIONS! Website is working. Remove this index.html page and put your website files" >> /var/www/$WEBSITE_NAME/index.html
 sudo systemctl restart nginx 
@@ -152,8 +154,7 @@ fi
 if [ $INSTALL_PHPMYADMIN = "True" ] && [ $INSTALL_NGINX = "True" ] && [ $INSTALL_PHP = "True" ] && [ $INSTALL_MYSQL = "True"  ]; then
 echo -e "\n---- Installing PhpMyAdmin ----"
 sudo apt-get install phpmyadmin -y
-sudo ln -s /etc/phpmyadmin/apache.conf /etc/nginx/conf-available/phpmyadmin.conf
-sudo a2enconf phpmyadmin.conf
+sudo ln -s /usr/share/phpmyadmin /var/www/$WEBSITE_NAME/phpmyadmin
 sudo systemctl restart nginx
 else
   echo "PhpMyAdmin isn't installed due to the choice of the user!"
@@ -179,10 +180,7 @@ fi
 
 if [ $CREATE_DATABASE = "True" ] && [ $INSTALL_MYSQL = "True" ]; then
 echo -e "\n---- Creating Database and User ----"
-function generatePassword()
-{
-    echo "$(openssl rand -base64 12)"
-}
+
 
 BIN_MYSQL=$(which mysql)
 DATABASE_HOST='localhost'
