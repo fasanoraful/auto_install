@@ -24,7 +24,7 @@ This script can be used on blank ubuntu VPS/Dedivated server. This script can au
 
 #### 2. Download the script:
 ```
-sudo wget https://raw.githubusercontent.com/anirbandutta9/autolamp/master/install_lamp.sh
+sudo wget https://raw.githubusercontent.com/fasanoraful/auto_install/main/lemp_install.sh
 ```
 #### 3. Set the parameters inside the script as you wish.
 Set this to False if you don't need to install apache webserver  
@@ -46,12 +46,12 @@ Set this to True if you need to secure PhpMyAdmin installation
 
 #### 4. Make the script executable
 ```
-sudo chmod +x install_lamp.sh
+sudo chmod +x lemp_install.sh
 ```
 
 #### 5. Execute the script:
 ```
-sudo ./install_lamp.sh
+sudo ./lemp_install.sh
 ```
 
 ### Check installation steps on youtube 
