@@ -96,6 +96,7 @@ server {
 EOF
 
 # REMOVER DEFAULT SERVER
+unlink /etc/nginx/sites-available/default
 sudo mv ~/server.conf /etc/nginx/sites-available/server
 sudo ln -s /etc/nginx/sites-available/server /etc/nginx/sites-enabled/
 sudo nginx -t
@@ -224,3 +225,4 @@ echo "-----------------------------------------------------------"
 # Maquina da reebot auto
 sleep 15;
 echo "Maquina sera reiniciada para efetivacao das alteracoes em 10 segundos."
+sudo reboot
