@@ -3,21 +3,14 @@
 # Script for installing LAMP on Ubuntu 16.04, 18.04 and 20.04 (could be used for other version too)
 #-------------------------------------------------------------------------------
 # This script can install the following automatically on your Ubuntu server.
-# 1) Apache Webserver 
+# 1) Nginx Webserver 
 # 2) Mariadb Database Server
 # 3) PHP
 # 4) PhpMyAdmin 
-# 5) Let'sEncrypt SSL for website 
-#-------------------------------------------------------------------------------
-# Make a new file:
-# sudo nano lamp.sh
-# Place this content in it and then make the file executable:
-# sudo chmod +x lamp.sh
-# Execute the script to install Odoo:
-# ./lamp.sh
+# 5) Let'sEncrypt SSL for website
 ################################################################################
 
-# Set this to False if you don't need to install apache webserver
+# Set this to False if you don't need to install nginx webserver
 INSTALL_NGINX="True"
 # Set this to False if you don't need to install PHP
 INSTALL_PHP="True"
@@ -26,22 +19,17 @@ INSTALL_MYSQL="True"
 # SET this to True if you need to create a database 
 CREATE_DATABASE="True" 
 # Set the database name and user you want to create
-DATABASE_NAME="servidor"
-DATABASE_USER="usuario"
+DATABASE_NAME="MegaStyller"
+DATABASE_USER="megastyller"
 # Set this to True if you need to install PHPMYADMIN
 INSTALL_PHPMYADMIN="True"
 # Set your domain name to be mapped 
 WEBSITE_NAME="megastyller.com"
 # Set this to True if you need to install Free SSL for the Website
-ENABLE_SSL="False" 
+ENABLE_SSL="False"
 # Set admin email for issuing SSL
 ADMIN_EMAIL="admin@example.com"
-# Set this to True if you need to secure PhpMyAdmin installation
-SECURE_PHPMYADMIN="False"
-# Set this to True if you need to install modsecurity
-INSTALL_MODSECURITY="False"
-# Set this to True if you need to secure your site using .htaccess rules
-SECURE_WEBSITE="False"
+
 
 function generatePassword()
 {
