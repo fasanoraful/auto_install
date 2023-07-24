@@ -132,7 +132,7 @@ fi
 
 
 if [ $INSTALL_PHP = "True" ]; then
-echo -e "\n---- Installing PHP ----"
+echo -e "\n---- Installing PHP ----" 
 sudo apt-get install php php-mysql php-redis php-cli php-cgi php-gd php-mbstring php-xml php-xmlrpc php-soap php-intl php-zip php-curl php-imagick php-bcmath php-redis php-fpm -y
 else
   echo "PHP isn't installed due to the choice of the user!"
