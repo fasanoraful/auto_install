@@ -27,7 +27,7 @@ INSTALL_MYSQL="True"
 CREATE_DATABASE="True" 
 # Set the database name and user you want to create
 DATABASE_NAME="servidor"
-DATABASE_USER="root"
+DATABASE_USER="usuario"
 # Set this to True if you need to install PHPMYADMIN
 INSTALL_PHPMYADMIN="True"
 # Set your domain name to be mapped 
@@ -86,11 +86,11 @@ if [ $INSTALL_NGINX = "True" ]; then
 echo -e "\n---- Installing Nginx Web Server ----"
 sudo apt install nginx -y
 sudo ufw allow 'Nginx HTTP'
-cat <<EOF > ~/$WEBSITE_NAME.conf
+cat <<EOF > ~/server.conf
 server {
     listen 80;
     server_name $WEBSITE_NAME;
-    root /var/www/$WEBSITE_NAME;
+    root /var/www/html;
 
     index index.html index.htm index.php;
 
@@ -114,12 +114,11 @@ server {
 }
 EOF
 
-sudo mv ~/$WEBSITE_NAME.conf /etc/nginx/sites-available/$WEBSITE_NAME
-sudo ln -s /etc/nginx/sites-available/$WEBSITE_NAME /etc/nginx/sites-enabled/
+sudo mv ~/server.conf /etc/nginx/sites-available/server
+sudo ln -s /etc/nginx/sites-available/server /etc/nginx/sites-enabled/
 sudo nginx -t
-sudo mkdir /var/www/$WEBSITE_NAME
 
-echo "CONGRATULATIONS! Website is working. Remove this index.html page and put your website files" >> /var/www/$WEBSITE_NAME/index.html
+echo "CONGRATULATIONS! Website is working. Remove this index.html page and put your website files" >> /var/www/html/index.html
 sudo systemctl reload nginx
 else
   echo "Nginx server isn't installed due to the choice of the user!"
@@ -133,7 +132,7 @@ fi
 
 if [ $INSTALL_PHP = "True" ]; then
 echo -e "\n---- Installing PHP ----" 
-sudo apt-get install php php-mysql php-redis php-cli php-cgi php-gd php-mbstring php-xml php-xmlrpc php-soap php-intl php-zip php-curl php-imagick php-bcmath php-redis php-fpm -y
+sudo apt install php-fpm php-mysql -y
 else
   echo "PHP isn't installed due to the choice of the user!"
 fi
@@ -159,7 +158,7 @@ fi
 if [ $INSTALL_PHPMYADMIN = "True" ] && [ $INSTALL_NGINX = "True" ] && [ $INSTALL_PHP = "True" ] && [ $INSTALL_MYSQL = "True"  ]; then
 echo -e "\n---- Installing PhpMyAdmin ----"
 sudo apt-get install phpmyadmin -y
-sudo ln -s /usr/share/phpmyadmin /var/www/$WEBSITE_NAME/phpmyadmin
+sudo ln -s /usr/share/phpmyadmin /var/www/html/phpmyadmin
 sudo systemctl restart nginx
 else
   echo "PhpMyAdmin isn't installed due to the choice of the user!"
@@ -195,7 +194,9 @@ SQL1="CREATE DATABASE IF NOT EXISTS ${DATABASE_NAME};"
 SQL2="CREATE USER '${DATABASE_USER}'@'${DATABASE_HOST}' IDENTIFIED BY '${DATABASE_PASS}';"
 SQL3="GRANT ALL PRIVILEGES ON ${DATABASE_NAME}.* TO '${DATABASE_USER}'@'${DATABASE_HOST}';"
 SQL4="FLUSH PRIVILEGES;"
-$BIN_MYSQL -u root -e "${SQL1}${SQL2}${SQL3}${SQL4}"
+SQL5="ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${DATABASE_PASS}';"
+SQL6="FLUSH PRIVILEGES;"
+$BIN_MYSQL -u root -e "${SQL1}${SQL2}${SQL3}${SQL4}${SQL5}${SQL6}"
 cat <<EOF > ~/database.txt
 
    >> Host      : ${DATABASE_HOST}
@@ -215,8 +216,8 @@ echo "-----------------------------------------------------------"
 echo "Done! Your setup is completed successfully. Specifications:"
 if [ $INSTALL_NGINX = "True" ]; then
 echo "Visit website: http://$WEBSITE_NAME "
-echo "Document root:  /var/www/$WEBSITE_NAME"
-echo "Nginx configuration file:  /etc/nginx/sites-available/$WEBSITE_NAME "
+echo "Document root:  /var/www/html"
+echo "Nginx configuration file: /etc/nginx/sites-available/server "
 echo "Check Nginx status:   systemctl status nginx"
 fi
 if [ $INSTALL_MYSQL = "True" ]; then
@@ -238,3 +239,8 @@ if [ $CREATE_DATABASE = "True" ]; then
   echo "Database information saved at : /root/database.txt"
 fi
 echo "-----------------------------------------------------------"
+
+
+# Maquina da reebot auto
+sleep 15;
+echo "Maquina sera reiniciada para efetivacao das alteracoes em 10 segundos."
