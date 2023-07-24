@@ -20,7 +20,6 @@ INSTALL_MYSQL="True"
 CREATE_DATABASE="True" 
 # Set the database name and user you want to create
 DATABASE_NAME="MegaStyller"
-DATABASE_USER="megastyller"
 # Set this to True if you need to install PHPMYADMIN
 INSTALL_PHPMYADMIN="True"
 # Set your domain name to be mapped 
@@ -76,32 +75,27 @@ sudo apt install nginx -y
 sudo ufw allow 'Nginx HTTP'
 cat <<EOF > ~/server.conf
 server {
-    listen 80;
-    server_name $WEBSITE_NAME;
+    listen 80 default_server;
+    listen [::]:80 default_server;
+
     root /var/www/html;
 
+    # Add index.php to the list if you are using PHP
     index index.html index.htm index.php;
 
-    location ~ \.php$ {
-          fastcgi_split_path_info ^(.+\.php)(/.+)$;
-          fastcgi_pass unix:/var/run/php/php7.4-fpm.sock;
-          fastcgi_index index.php;
-          fastcgi_intercept_errors off;
-          fastcgi_buffer_size 16k;
-          fastcgi_buffers 4 16k;
-          fastcgi_connect_timeout 600;
-          fastcgi_send_timeout 600;
-          fastcgi_read_timeout 600;
-        }
+    server_name _;
 
+    location / {
+        # First attempt to serve request as file, then
+        # as directory, then fall back to displaying a 404.
+        try_files $uri $uri/ =404;
+    }
 
-   location / {
-       try_files $uri $uri/ =404;
-   }
-
+    
 }
 EOF
 
+# REMOVER DEFAULT SERVER
 sudo mv ~/server.conf /etc/nginx/sites-available/server
 sudo ln -s /etc/nginx/sites-available/server /etc/nginx/sites-enabled/
 sudo nginx -t
@@ -179,18 +173,16 @@ DATABASE_HOST='localhost'
 DATABASE_PASS=$(generatePassword)
 ROOTMYSQL_PASS=" "
 SQL1="CREATE DATABASE IF NOT EXISTS ${DATABASE_NAME};"
-SQL2="CREATE USER '${DATABASE_USER}'@'${DATABASE_HOST}' IDENTIFIED BY '${DATABASE_PASS}';"
-SQL3="GRANT ALL PRIVILEGES ON ${DATABASE_NAME}.* TO '${DATABASE_USER}'@'${DATABASE_HOST}';"
+SQL2="update user set plugin='' where User='root';"
+SQL3="ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${DATABASE_PASS}';"
 SQL4="FLUSH PRIVILEGES;"
-SQL5="ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${DATABASE_PASS}';"
-SQL6="FLUSH PRIVILEGES;"
-$BIN_MYSQL -u root -e "${SQL1}${SQL2}${SQL3}${SQL4}${SQL5}${SQL6}"
+$BIN_MYSQL -u root -e "${SQL1}${SQL2}${SQL3}${SQL4}"
 cat <<EOF > ~/database.txt
 
    >> Host      : ${DATABASE_HOST}
    >> Port      : 3306
    >> Database  : ${DATABASE_NAME}
-   >> User      : ${DATABASE_USER}
+   >> User      : root
    >> Pass      : ${DATABASE_PASS}
 
 EOF
@@ -222,7 +214,7 @@ if [ $CREATE_DATABASE = "True" ]; then
     echo " >> Host      : ${DATABASE_HOST}"
 	  echo " >> Port      : 3306 "
     echo " >> Database  : ${DATABASE_NAME}"
-    echo " >> User      : ${DATABASE_USER}"
+    echo " >> User      : root"
     echo " >> Pass      : ${DATABASE_PASS}"
   echo "Database information saved at : /root/database.txt"
 fi
