@@ -89,33 +89,38 @@ sudo ufw allow 'Nginx HTTP'
 cat <<EOF > ~/$WEBSITE_NAME.conf
 server {
     listen 80;
-    server_name $WEBSITE_NAME www.$WEBSITE_NAME;
+    server_name $WEBSITE_NAME;
     root /var/www/$WEBSITE_NAME;
 
     index index.html index.htm index.php;
 
-    location / {
-        try_files $uri $uri/ =404;
-    }
-
     location ~ \.php$ {
-        include snippets/fastcgi-php.conf;
-        fastcgi_pass unix:/var/run/php/php7.4-fpm.sock;
-     }
+          fastcgi_split_path_info ^(.+\.php)(/.+)$;
+          fastcgi_pass unix:/var/run/php/php7.4-fpm.sock;
+          fastcgi_index index.php;
+          fastcgi_intercept_errors off;
+          fastcgi_buffer_size 16k;
+          fastcgi_buffers 4 16k;
+          fastcgi_connect_timeout 600;
+          fastcgi_send_timeout 600;
+          fastcgi_read_timeout 600;
+        }
 
-    location ~ /\.ht {
-        deny all;
-    }
+
+   location / {
+       try_files $uri $uri/ =404;
+   }
 
 }
 EOF
 
 sudo mv ~/$WEBSITE_NAME.conf /etc/nginx/sites-available/$WEBSITE_NAME
 sudo ln -s /etc/nginx/sites-available/$WEBSITE_NAME /etc/nginx/sites-enabled/
+sudo nginx -t
 sudo mkdir /var/www/$WEBSITE_NAME
 
 echo "CONGRATULATIONS! Website is working. Remove this index.html page and put your website files" >> /var/www/$WEBSITE_NAME/index.html
-sudo systemctl restart nginx 
+sudo systemctl reload nginx
 else
   echo "Nginx server isn't installed due to the choice of the user!"
 fi
@@ -128,7 +133,7 @@ fi
 
 if [ $INSTALL_PHP = "True" ]; then
 echo -e "\n---- Installing PHP ----"
-sudo apt-get install php php-mysql libapache2-mod-php php-redis php-cli php-cgi php-gd php-mbstring php-xml php-xmlrpc php-soap php-intl php-zip php-curl php-imagick php-bcmath php-redis -y
+sudo apt-get install php php-mysql php-redis php-cli php-cgi php-gd php-mbstring php-xml php-xmlrpc php-soap php-intl php-zip php-curl php-imagick php-bcmath php-redis php-fpm -y
 else
   echo "PHP isn't installed due to the choice of the user!"
 fi
