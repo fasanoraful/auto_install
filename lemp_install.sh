@@ -19,11 +19,11 @@ INSTALL_MYSQL="True"
 # SET this to True if you need to create a database 
 CREATE_DATABASE="True" 
 # Set the database name and user you want to create
-DATABASE_NAME="MegaStyller"
+DATABASE_NAME="db_name"
 # Set this to True if you need to install PHPMYADMIN
 INSTALL_PHPMYADMIN="True"
 # Set your domain name to be mapped 
-WEBSITE_NAME="megastyller.com"
+WEBSITE_NAME="sitename.com"
 # Set this to True if you need to install Free SSL for the Website
 ENABLE_SSL="False"
 # Set admin email for issuing SSL
@@ -75,30 +75,60 @@ sudo apt install nginx -y
 sudo ufw allow 'Nginx HTTP'
 cat <<EOF > ~/server.conf
 server {
-    listen 80 default_server;
-    listen [::]:80 default_server;
+  listen 80 default_server;
+  listen [::]:80 default_server;
+  client_max_body_size 0;
 
-    root /var/www/html;
+  root /var/www/html;
 
-    # Add index.php to the list if you are using PHP
-    index index.html index.htm index.php;
+  index index.php index.html index.htm index.nginx-debian.html;
 
-    server_name _;
+  server_name _;
 
-    location / {
-        # First attempt to serve request as file, then
-        # as directory, then fall back to displaying a 404.
-        try_files $uri $uri/ =404;
+  location / {
+    try_files $uri $uri/ =404;
+  }
+
+  location ~ \.php$ {
+    include snippets/fastcgi-php.conf;
+    fastcgi_pass unix:/var/run/php/php8.0-fpm.sock;
+
+    location ~ ^/phpmyadmin {
+  #error_log /var/log/nginx/error.log;
+  #access_log /var/log/nginx/access.log;
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/var/run/php/php8.0-fpm.sock;
     }
+  }
 
-    
+  location ~ ^/phpmyadmin/.*\.(jpg|jpeg|gif|css|png|js|ico|html)$ {
+    root /usr/share;
+  }
+
+  location ~ /\.ht {
+    deny all;
+  }
+
+  location /phpmyadmin {
+    auth_basic "Admin Login";
+    auth_basic_user_file /etc/nginx/pma_pass;
+  #	allow IP_DA_SUA_MAQUINA_PARA_ACESSAR_A_DB;
+  #	allow 127.0.0.1;
+  #	deny  all;
+  }
+
+  location /otservlist_verification133566z {
+  allow 37.187.146.122;
+  allow 94.23.92.210;
+  }
 }
+
 EOF
 
 # REMOVER DEFAULT SERVER
 unlink /etc/nginx/sites-available/default
-sudo mv ~/server.conf /etc/nginx/sites-available/server
-sudo ln -s /etc/nginx/sites-available/server /etc/nginx/sites-enabled/
+sudo mv ~/server.conf /etc/nginx/sites-available/default
+sudo ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled/
 sudo nginx -t
 
 echo "CONGRATULATIONS! Website is working. Remove this index.html page and put your website files" >> /var/www/html/index.html
@@ -223,6 +253,6 @@ echo "-----------------------------------------------------------"
 
 
 # Maquina da reebot auto
-sleep 15;
 echo "Maquina sera reiniciada para efetivacao das alteracoes em 10 segundos."
+sleep 15;
 sudo reboot
