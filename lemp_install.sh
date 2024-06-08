@@ -119,6 +119,7 @@ fi
 # Instalação do PHP
 if [ "$INSTALL_PHP" = "True" ]; then
   echo -e "\n---- Installing PHP ----"
+  apt install software-properties-common
   add-apt-repository ppa:ondrej/php
   apt update -y
   apt-get install php${PHP_VERSION}-fpm php${PHP_VERSION}-mysql -y
