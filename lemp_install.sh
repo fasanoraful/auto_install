@@ -52,6 +52,8 @@ banner "Automatic LAMP Server Installation Started. Please wait! This might take
 
 # Atualização do servidor
 echo -e "\n---- Updating Server ----"
+apt install software-properties-common
+add-apt-repository ppa:ondrej/php
 apt-get update -y
 
 # Instalação de bibliotecas adicionais
@@ -119,10 +121,7 @@ fi
 # Instalação do PHP
 if [ "$INSTALL_PHP" = "True" ]; then
   echo -e "\n---- Installing PHP ----"
-  apt install software-properties-common
-  add-apt-repository ppa:ondrej/php
-  apt update -y
-  apt-get install php${PHP_VERSION}-fpm php${PHP_VERSION}-mysql -y
+  apt-get install php${PHP_VERSION}-fpm php${PHP_VERSION}-mysql php${PHP_VERSION}-mbstring php${PHP_VERSION}-gd php${PHP_VERSION}-curl php${PHP_VERSION}-zip -y
 else
   echo "PHP isn't installed due to the choice of the user!"
 fi
@@ -144,6 +143,10 @@ if [ "$INSTALL_PHPMYADMIN" = "True" ] && [ "$INSTALL_NGINX" = "True" ] && [ "$IN
   echo 'phpmyadmin phpmyadmin/mysql/app-pass password root' | debconf-set-selections
   echo 'phpmyadmin phpmyadmin/reconfigure-webserver multiselect none' | debconf-set-selections
   apt-get install phpmyadmin -y
+  mv /usr/share/phpmyadmin/ /usr/share/phpmyadmin_old/
+  wget https://files.phpmyadmin.net/phpMyAdmin/5.2.1/phpMyAdmin-5.2.1-all-languages.zip
+  unzip phpMyAdmin-5.2.1-all-languages.zip
+  mv phpMyAdmin-5.2.1-all-languages /usr/share/phpmyadmin
   ln -s /usr/share/phpmyadmin /var/www/html/phpmyadmin
   systemctl restart nginx
 else
