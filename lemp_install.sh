@@ -163,6 +163,7 @@ if [ "$CREATE_DATABASE" = "True" ] && [ "$INSTALL_MYSQL" = "True" ]; then
   echo -e "\n---- Creating Database and User ----"
   DATABASE_PASS=$(generatePassword)
   mysql -u root <<MYSQL_SCRIPT
+USE mysql;
 CREATE DATABASE IF NOT EXISTS ${DATABASE_NAME};
 ALTER USER 'root'@'localhost' IDENTIFIED BY '${DATABASE_PASS}';
 FLUSH PRIVILEGES;
