@@ -20,6 +20,7 @@ INSTALL_PHPMYADMIN="True"
 WEBSITE_NAME="sitename.com"
 ENABLE_SSL="False"
 ADMIN_EMAIL="admin@example.com"
+PHP_VERSION="8.0" # Set your desired PHP version here
 
 # Funções
 function generatePassword() {
@@ -76,7 +77,7 @@ server {
 
   location ~ \.php\$ {
     include snippets/fastcgi-php.conf;
-    fastcgi_pass unix:/var/run/php/php-fpm.sock;
+    fastcgi_pass unix:/var/run/php/php${PHP_VERSION}-fpm.sock;
   }
 
   location ~ /\.ht {
@@ -89,7 +90,7 @@ server {
     location ~ ^/phpmyadmin/(.+\.php)\$ {
       try_files \$uri =404;
       root /usr/share/;
-      fastcgi_pass unix:/var/run/php/php-fpm.sock;
+      fastcgi_pass unix:/var/run/php/php${PHP_VERSION}-fpm.sock;
       fastcgi_index index.php;
       fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
       include /etc/nginx/fastcgi_params;
@@ -110,7 +111,7 @@ fi
 # Instalação do PHP
 if [ "$INSTALL_PHP" = "True" ]; then
   echo -e "\n---- Installing PHP ----"
-  apt-get install php-fpm php-mysql -y
+  apt-get install php${PHP_VERSION}-fpm php${PHP_VERSION}-mysql -y
 else
   echo "PHP isn't installed due to the choice of the user!"
 fi
