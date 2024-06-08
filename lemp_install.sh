@@ -42,8 +42,6 @@ if [ "$(whoami)" != 'root' ]; then
   exit 1
 fi
 
-apt-get install git unzip zip gdb screen htop build-essential pkg-config libboost-dev libgmp3-dev libxml2-dev sqlite3 libsqlite3-dev libtcmalloc-minimal4 liblua5.1 libmysqlclient-dev ccache libboost-filesystem-dev libboost-regex-dev libboost-system-dev libboost-thread-dev libboost-iostreams-dev
-
 if [ "$INSTALL_NGINX" != "True" ] && [ "$INSTALL_MYSQL" != "True" ] && [ "$INSTALL_PHP" != "True" ]; then
   echo "Please set some values to True for the script to run!"
   exit 1
@@ -55,6 +53,14 @@ banner "Automatic LAMP Server Installation Started. Please wait! This might take
 # Atualização do servidor
 echo -e "\n---- Updating Server ----"
 apt-get update -y
+
+# Instalação de bibliotecas adicionais
+echo -e "\n---- Installing additional libraries ----"
+apt-get install -y git unzip zip gdb screen htop build-essential pkg-config \
+  libboost-dev libgmp3-dev libxml2-dev sqlite3 libsqlite3-dev \
+  libtcmalloc-minimal4 liblua5.1-0 libmysqlclient-dev ccache \
+  libboost-filesystem-dev libboost-regex-dev libboost-system-dev \
+  libboost-thread-dev libboost-iostreams-dev
 
 # Instalação do Nginx
 if [ "$INSTALL_NGINX" = "True" ]; then
