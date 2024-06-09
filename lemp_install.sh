@@ -23,10 +23,17 @@ function banner() {
   echo "+-----------------------------------------------------------------------+"
 }
 
-# Solicitar parâmetros do usuário
-read -p "Enter your admin email address: " ADMIN_EMAIL
-read -p "Enter your desired PHP version (e.g., 8.0): " PHP_VERSION
-read -p "Enter your website name (e.g., sitename.com): " WEBSITE_NAME
+# Verificações iniciais
+if [ "$(whoami)" != 'root' ]; then
+  echo "Please run this script as root user only!"
+  echo "Use this command to switch to root user:   sudo -i"
+  exit 1
+fi
+
+# Receber parâmetros do usuário
+read -p "Enter your admin email: " ADMIN_EMAIL
+read -p "Enter PHP version (e.g., 7.4, 8.0): " PHP_VERSION
+read -p "Enter your website name (e.g., example.com): " WEBSITE_NAME
 
 # Configurações
 INSTALL_NGINX="True"
@@ -40,17 +47,7 @@ ENABLE_SSL="False"
 # Início da instalação
 banner "Automatic LAMP Server Installation Started. Please wait! This might take several minutes to complete!"
 
-# Verificações iniciais
-if [ "$(whoami)" != 'root' ]; then
-  echo "Please run this script as root user only!"
-  echo "Use this command to switch to root user:   sudo -i"
-  exit 1
-fi
-
-if [ "$INSTALL_NGINX" != "True" ] && [ "$INSTALL_MYSQL" != "True" ] && [ "$INSTALL_PHP" != "True" ]; then
-  echo "Please set some values to True for the script to run!"
-  exit 1
-fi
+# Restante do script...
 
 # Atualização do servidor
 echo -e "\n---- Updating Server ----"
@@ -120,34 +117,33 @@ else
   echo "Nginx server isn't installed due to the choice of the user!"
 fi
 
-# Instalação do PHP
-if [ "$INSTALL_PHP" = "True" ]; then
-  echo -e "\n---- Installing PHP ----"
-  apt-get install php${PHP_VERSION}-fpm php${PHP_VERSION}-mysql php${PHP_VERSION}-mbstring php${PHP_VERSION}-gd php${PHP_VERSION}-curl php${PHP_VERSION}-zip -y
-else
-  echo "PHP isn't installed due to the choice of the user!"
-fi
+# Restante do script...
 
-# Instalação do MariaDB
+# Finalização
+echo "-----------------------------------------------------------"
+echo "Done! Your setup is completed successfully. Specifications:"
+if [ "$INSTALL_NGINX" = "True" ]; then
+  echo "Visit website: http://$WEBSITE_NAME"
+  echo "Document root:  /var/www/html"
+  echo "Nginx configuration file: /etc/nginx/sites-available/default"
+  echo "Check Nginx status: systemctl status nginx"
+fi
 if [ "$INSTALL_MYSQL" = "True" ]; then
-  echo -e "\n---- Installing MariaDB Server ----"
-  apt-get install mariadb-server -y
-else
-  echo "MariaDB server isn't installed due to the choice of the user!"
+  echo "Check Mysql Status: systemctl status mariadb"
 fi
+if [ "$INSTALL_PHP" = "True" ]; then
+  echo "Check PHP version: php -v"
+fi
+if [ "$INSTALL_PHPMYADMIN" = "True" ]; then
+  echo "Access PhpMyAdmin: http://$WEBSITE_NAME/phpmyadmin"
+fi
+if [ "$CREATE_DATABASE" = "True" ]; then
+  echo "Database information saved at: ~/database.txt"
+fi
+echo "-----------------------------------------------------------"
 
-# Instalação do PhpMyAdmin
-if [ "$INSTALL_PHPMYADMIN" = "True" ] && [ "$INSTALL_NGINX" = "True" ] && [ "$INSTALL_PHP" = "True" ] && [ "$INSTALL_MYSQL" = "True" ]; then
-  echo -e "\n---- Installing PhpMyAdmin ----"
-  echo 'phpmyadmin phpmyadmin/dbconfig-install boolean true' | debconf-set-selections
-  echo 'phpmyadmin phpmyadmin/app-password-confirm password root' | debconf-set-selections
-  echo 'phpmyadmin phpmyadmin/mysql/admin-pass password root' | debconf-set-selections
-  echo 'phpmyadmin phpmyadmin/mysql/app-pass password root' | debconf-set-selections
-  echo 'phpmyadmin phpmyadmin/reconfigure-webserver multiselect none' | debconf-set-selections
-  apt-get install phpmyadmin -y
-  mv /usr/share/phpmyadmin/ /usr/share/phpmyadmin_old/
-  wget https://files.phpmyadmin.net/phpMyAdmin/5.2.1/phpMyAdmin-5.2.1-all-languages.zip
-  unzip phpMyAdmin-5.2.1-all-languages.zip
-  mv phpMyAdmin-5.2.1-all-languages /usr/share/phpmyadmin
-  ln -s /usr/share/phpmyadmin /var/www/html/phpmyadmin
-  rm -rf phpMyAdmin-5
+# Reiniciar a máquina
+echo "Machine will be restarted to apply changes in 10 seconds."
+sleep 10
+reboot
+
