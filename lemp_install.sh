@@ -11,10 +11,6 @@
 ################################################################################
 
 # Funções
-function generatePassword() {
-  openssl rand -base64 12
-}
-
 function banner() {
   echo "+-----------------------------------------------------------------------+"
   printf "| %-65s |\n" "`date`"
@@ -34,7 +30,7 @@ fi
 read -p "Enter your admin email: " ADMIN_EMAIL
 read -p "Enter PHP version (e.g., 7.4, 8.0): " PHP_VERSION
 read -p "Enter your website name (e.g., example.com): " WEBSITE_NAME
-read -p "Enter your database/phpmyadmin password: " WEBSITE_NAME
+read -p "Enter your database/phpmyadmin password: " MYSQL_PASSWORD_SET
 
 # Configurações
 INSTALL_NGINX="True"
@@ -154,6 +150,7 @@ if [ "$INSTALL_PHPMYADMIN" = "True" ] && [ "$INSTALL_NGINX" = "True" ] && [ "$IN
 else
   echo "PhpMyAdmin isn't installed due to the choice of the user!"
 fi
+
 # Habilitar SSL com Certbot
 if [ "$INSTALL_NGINX" = "True" ] && [ "$ENABLE_SSL" = "True" ] && [ "$ADMIN_EMAIL" != "admin@example.com" ]; then
   add-apt-repository ppa:certbot/certbot -y && apt-get update -y
@@ -164,10 +161,11 @@ if [ "$INSTALL_NGINX" = "True" ] && [ "$ENABLE_SSL" = "True" ] && [ "$ADMIN_EMAI
 else
   echo "SSL/HTTPS isn't enabled due to choice of the user or because of a misconfiguration!"
 fi
+
 # Criar banco de dados e usuário MySQL
 if [ "$CREATE_DATABASE" = "True" ] && [ "$INSTALL_MYSQL" = "True" ]; then
   echo -e "\n---- Creating Database and User ----"
-  DATABASE_PASS=$(generatePassword)
+  DATABASE_PASS=$MYSQL_PASSWORD_SET
   mysql -u root <<MYSQL_SCRIPT
 USE mysql;
 CREATE DATABASE IF NOT EXISTS ${DATABASE_NAME};
