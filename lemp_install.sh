@@ -53,7 +53,7 @@ banner "Automatic LAMP Server Installation Started. Please wait! This might take
 # Atualização do servidor
 echo -e "\n---- Updating Server ----"
 apt install -y software-properties-common
-add-apt-repository ppa:ondrej/php
+add-apt-repository -y ppa:ondrej/php
 apt-get update -y
 
 # Instalação de bibliotecas adicionais
