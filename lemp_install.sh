@@ -34,6 +34,7 @@ fi
 read -p "Enter your admin email: " ADMIN_EMAIL
 read -p "Enter PHP version (e.g., 7.4, 8.0): " PHP_VERSION
 read -p "Enter your website name (e.g., example.com): " WEBSITE_NAME
+read -p "Enter your database/phpmyadmin password: " WEBSITE_NAME
 
 # Configurações
 INSTALL_NGINX="True"
@@ -117,7 +118,73 @@ else
   echo "Nginx server isn't installed due to the choice of the user!"
 fi
 
-# Restante do script...
+# Instalação do PHP
+if [ "$INSTALL_PHP" = "True" ]; then
+  echo -e "\n---- Installing PHP ----"
+  apt install software-properties-common
+  add-apt-repository ppa:ondrej/php
+  apt update -y
+  apt-get install php${PHP_VERSION}-fpm php${PHP_VERSION}-mysql -y
+  apt-get install php${PHP_VERSION}-fpm php${PHP_VERSION}-mysql php${PHP_VERSION}-mbstring php${PHP_VERSION}-gd php${PHP_VERSION}-curl php${PHP_VERSION}-zip -y
+else
+  echo "PHP isn't installed due to the choice of the user!"
+fi
+# Instalação do MariaDB
+if [ "$INSTALL_MYSQL" = "True" ]; then
+  echo -e "\n---- Installing MariaDB Server ----"
+  apt-get install mariadb-server -y
+else
+  echo "MariaDB server isn't installed due to the choice of the user!"
+fi
+# Instalação do PhpMyAdmin
+if [ "$INSTALL_PHPMYADMIN" = "True" ] && [ "$INSTALL_NGINX" = "True" ] && [ "$INSTALL_PHP" = "True" ] && [ "$INSTALL_MYSQL" = "True" ]; then
+  echo -e "\n---- Installing PhpMyAdmin ----"
+  echo 'phpmyadmin phpmyadmin/dbconfig-install boolean true' | debconf-set-selections
+  echo 'phpmyadmin phpmyadmin/app-password-confirm password root' | debconf-set-selections
+  echo 'phpmyadmin phpmyadmin/mysql/admin-pass password root' | debconf-set-selections
+  echo 'phpmyadmin phpmyadmin/mysql/app-pass password root' | debconf-set-selections
+  echo 'phpmyadmin phpmyadmin/reconfigure-webserver multiselect none' | debconf-set-selections
+  apt-get install phpmyadmin -y
+  mv /usr/share/phpmyadmin/ /usr/share/phpmyadmin_old/
+  wget https://files.phpmyadmin.net/phpMyAdmin/5.2.1/phpMyAdmin-5.2.1-all-languages.zip
+  unzip phpMyAdmin-5.2.1-all-languages.zip
+  mv phpMyAdmin-5.2.1-all-languages /usr/share/phpmyadmin
+  ln -s /usr/share/phpmyadmin /var/www/html/phpmyadmin
+  systemctl restart nginx
+else
+  echo "PhpMyAdmin isn't installed due to the choice of the user!"
+fi
+# Habilitar SSL com Certbot
+if [ "$INSTALL_NGINX" = "True" ] && [ "$ENABLE_SSL" = "True" ] && [ "$ADMIN_EMAIL" != "admin@example.com" ]; then
+  add-apt-repository ppa:certbot/certbot -y && apt-get update -y
+  apt-get install certbot python3-certbot-nginx -y
+  certbot --nginx -d "$WEBSITE_NAME" --noninteractive --agree-tos --email "$ADMIN_EMAIL" --redirect
+  systemctl reload nginx
+  echo "SSL/HTTPS is enabled!"
+else
+  echo "SSL/HTTPS isn't enabled due to choice of the user or because of a misconfiguration!"
+fi
+# Criar banco de dados e usuário MySQL
+if [ "$CREATE_DATABASE" = "True" ] && [ "$INSTALL_MYSQL" = "True" ]; then
+  echo -e "\n---- Creating Database and User ----"
+  DATABASE_PASS=$(generatePassword)
+  mysql -u root <<MYSQL_SCRIPT
+USE mysql;
+CREATE DATABASE IF NOT EXISTS ${DATABASE_NAME};
+ALTER USER 'root'@'localhost' IDENTIFIED BY '${DATABASE_PASS}';
+FLUSH PRIVILEGES;
+MYSQL_SCRIPT
+  cat <<EOF > ~/database.txt
+   >> Host      : localhost
+   >> Port      : 3306
+   >> Database  : ${DATABASE_NAME}
+   >> User      : root
+   >> Pass      : ${DATABASE_PASS}
+EOF
+  echo "Successfully Created Database and User! Details saved at ~/database.txt"
+else
+  echo "Database isn't created due to the choice of the user!"
+fi
 
 # Finalização
 echo "-----------------------------------------------------------"
