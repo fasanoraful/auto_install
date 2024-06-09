@@ -52,7 +52,7 @@ banner "Automatic LAMP Server Installation Started. Please wait! This might take
 
 # Atualização do servidor
 echo -e "\n---- Updating Server ----"
-apt install software-properties-common
+apt install -y software-properties-common
 add-apt-repository ppa:ondrej/php
 apt-get update -y
 
@@ -148,6 +148,7 @@ if [ "$INSTALL_PHPMYADMIN" = "True" ] && [ "$INSTALL_NGINX" = "True" ] && [ "$IN
   unzip phpMyAdmin-5.2.1-all-languages.zip
   mv phpMyAdmin-5.2.1-all-languages /usr/share/phpmyadmin
   ln -s /usr/share/phpmyadmin /var/www/html/phpmyadmin
+  rm -rf phpMyAdmin-5.2.1-all-languages.zip
   systemctl restart nginx
 else
   echo "PhpMyAdmin isn't installed due to the choice of the user!"
