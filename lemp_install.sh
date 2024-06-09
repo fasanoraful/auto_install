@@ -10,18 +10,6 @@
 # 5) Let'sEncrypt SSL for website
 ################################################################################
 
-# Configurações
-INSTALL_NGINX="True"
-INSTALL_PHP="True"
-INSTALL_MYSQL="True"
-CREATE_DATABASE="True"
-DATABASE_NAME="db_name"
-INSTALL_PHPMYADMIN="True"
-WEBSITE_NAME="sitename.com"
-ENABLE_SSL="False"
-ADMIN_EMAIL="admin@example.com"
-PHP_VERSION="8.0" # Set your desired PHP version here
-
 # Funções
 function generatePassword() {
   openssl rand -base64 12
@@ -35,6 +23,23 @@ function banner() {
   echo "+-----------------------------------------------------------------------+"
 }
 
+# Solicitar parâmetros do usuário
+read -p "Enter your admin email address: " ADMIN_EMAIL
+read -p "Enter your desired PHP version (e.g., 8.0): " PHP_VERSION
+read -p "Enter your website name (e.g., sitename.com): " WEBSITE_NAME
+
+# Configurações
+INSTALL_NGINX="True"
+INSTALL_PHP="True"
+INSTALL_MYSQL="True"
+CREATE_DATABASE="True"
+DATABASE_NAME="db_name"
+INSTALL_PHPMYADMIN="True"
+ENABLE_SSL="False"
+
+# Início da instalação
+banner "Automatic LAMP Server Installation Started. Please wait! This might take several minutes to complete!"
+
 # Verificações iniciais
 if [ "$(whoami)" != 'root' ]; then
   echo "Please run this script as root user only!"
@@ -46,9 +51,6 @@ if [ "$INSTALL_NGINX" != "True" ] && [ "$INSTALL_MYSQL" != "True" ] && [ "$INSTA
   echo "Please set some values to True for the script to run!"
   exit 1
 fi
-
-# Início da instalação
-banner "Automatic LAMP Server Installation Started. Please wait! This might take several minutes to complete!"
 
 # Atualização do servidor
 echo -e "\n---- Updating Server ----"
@@ -148,71 +150,4 @@ if [ "$INSTALL_PHPMYADMIN" = "True" ] && [ "$INSTALL_NGINX" = "True" ] && [ "$IN
   unzip phpMyAdmin-5.2.1-all-languages.zip
   mv phpMyAdmin-5.2.1-all-languages /usr/share/phpmyadmin
   ln -s /usr/share/phpmyadmin /var/www/html/phpmyadmin
-  rm -rf phpMyAdmin-5.2.1-all-languages.zip
-  systemctl restart nginx
-else
-  echo "PhpMyAdmin isn't installed due to the choice of the user!"
-fi
-
-# Habilitar SSL com Certbot
-if [ "$INSTALL_NGINX" = "True" ] && [ "$ENABLE_SSL" = "True" ] && [ "$ADMIN_EMAIL" != "admin@example.com" ]; then
-  add-apt-repository ppa:certbot/certbot -y && apt-get update -y
-  apt-get install certbot python3-certbot-nginx -y
-  certbot --nginx -d "$WEBSITE_NAME" --noninteractive --agree-tos --email "$ADMIN_EMAIL" --redirect
-  systemctl reload nginx
-  echo "SSL/HTTPS is enabled!"
-else
-  echo "SSL/HTTPS isn't enabled due to choice of the user or because of a misconfiguration!"
-fi
-
-# Criar banco de dados e usuário MySQL
-if [ "$CREATE_DATABASE" = "True" ] && [ "$INSTALL_MYSQL" = "True" ]; then
-  echo -e "\n---- Creating Database and User ----"
-  DATABASE_PASS=$(generatePassword)
-  mysql -u root <<MYSQL_SCRIPT
-USE mysql;
-CREATE DATABASE IF NOT EXISTS ${DATABASE_NAME};
-ALTER USER 'root'@'localhost' IDENTIFIED BY '${DATABASE_PASS}';
-FLUSH PRIVILEGES;
-MYSQL_SCRIPT
-
-  cat <<EOF > ~/database.txt
-   >> Host      : localhost
-   >> Port      : 3306
-   >> Database  : ${DATABASE_NAME}
-   >> User      : root
-   >> Pass      : ${DATABASE_PASS}
-EOF
-
-  echo "Successfully Created Database and User! Details saved at ~/database.txt"
-else
-  echo "Database isn't created due to the choice of the user!"
-fi
-
-# Finalização
-echo "-----------------------------------------------------------"
-echo "Done! Your setup is completed successfully. Specifications:"
-if [ "$INSTALL_NGINX" = "True" ]; then
-  echo "Visit website: http://$WEBSITE_NAME"
-  echo "Document root:  /var/www/html"
-  echo "Nginx configuration file: /etc/nginx/sites-available/default"
-  echo "Check Nginx status: systemctl status nginx"
-fi
-if [ "$INSTALL_MYSQL" = "True" ]; then
-  echo "Check Mysql Status: systemctl status mariadb"
-fi
-if [ "$INSTALL_PHP" = "True" ]; then
-  echo "Check PHP version: php -v"
-fi
-if [ "$INSTALL_PHPMYADMIN" = "True" ]; then
-  echo "Access PhpMyAdmin: http://$WEBSITE_NAME/phpmyadmin"
-fi
-if [ "$CREATE_DATABASE" = "True" ]; then
-  echo "Database information saved at: ~/database.txt"
-fi
-echo "-----------------------------------------------------------"
-
-# Reiniciar a máquina
-echo "Machine will be restarted to apply changes in 10 seconds."
-sleep 10
-reboot
+  rm -rf phpMyAdmin-5
