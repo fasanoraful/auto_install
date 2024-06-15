@@ -3,7 +3,7 @@
 This script can be used on blank ubuntu VPS/Dedivated server. This script can automatically install and setup the following :
 
 ```
-1) Apache Webserver 
+1) Nginx Webserver 
 2) Mariadb Database Server
 3) PHP
 4) PhpMyAdmin 
@@ -26,34 +26,14 @@ This script can be used on blank ubuntu VPS/Dedivated server. This script can au
 ```
 sudo wget https://raw.githubusercontent.com/fasanoraful/auto_install/main/lemp_install.sh
 ```
-#### 3. Set the parameters inside the script as you wish.
-Set this to False if you don't need to install apache webserver  
-``` INSTALL_APACHE="True" ```   
-Set this to False if you don't need to install PHP  
-``` INSTALL_PHP="True" ```  
-Set this to False if you don't need to install any database server  
-``` INSTALL_MYSQL="True" ```  
-SET this to True if you need to create a database   
-``` CREATE_DATABASE="False" ```  
-Set the database name and user you want to create  
-``` DATABASE_NAME="lampdb" ```  
-``` DATABASE_USER="lampdbuser" ```  
-Set admin email for issuing SSL  
-``` ADMIN_EMAIL="admin@example.com" ```  
-Set this to True if you need to secure PhpMyAdmin installation  
-``` SECURE_PHPMYADMIN="False" ```  
 
-
-#### 4. Make the script executable
+#### 3. Make the script executable
 ```
 sudo chmod +x lemp_install.sh
 ```
 
-#### 5. Execute the script:
+#### 4. Execute the script:
 ```
 sudo ./lemp_install.sh
 ```
-
-### Check installation steps on youtube 
-https://youtu.be/Z5Up34z5PaQ
 
