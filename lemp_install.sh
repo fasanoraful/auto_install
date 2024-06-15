@@ -44,8 +44,6 @@ ENABLE_SSL="False"
 # Início da instalação
 banner "Automatic LAMP Server Installation Started. Please wait! This might take several minutes to complete!"
 
-# Restante do script...
-
 # Atualização do servidor
 echo -e "\n---- Updating Server ----"
 apt install -y software-properties-common
