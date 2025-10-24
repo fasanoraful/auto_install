@@ -4,13 +4,8 @@
 #-------------------------------------------------------------------------------
 # Autor: Victor Fasano (adaptado)
 # Compatível com Ubuntu 20.04, 22.04, 24.04
-# Funções:
-# - Instala dependências
-# - Compila PHP manualmente (versão informada)
-# - Instala Nginx e MariaDB sob confirmação
 ################################################################################
 
-# Função banner
 function banner() {
   echo "+-----------------------------------------------------------------------+"
   printf "| %-65s |\n" "`date`"
@@ -19,15 +14,31 @@ function banner() {
   echo "+-----------------------------------------------------------------------+"
 }
 
-# Verifica se é root
 if [ "$(whoami)" != "root" ]; then
   echo "❌ Execute este script como root (use: sudo -i)"
   exit 1
 fi
 
-# Perguntas iniciais
+# ======== SELEÇÃO DE VERSÃO DO PHP ==========
+echo ""
+echo "Selecione a versão do PHP para compilar:"
+options=("8.0.30" "8.1.29" "8.2.23" "8.3.3" "Cancelar")
+select opt in "${options[@]}"; do
+  case $opt in
+    "8.0.30"|"8.1.29"|"8.2.23"|"8.3.3")
+      PHP_VERSION=$opt
+      break
+      ;;
+    "Cancelar")
+      echo "Instalação cancelada."
+      exit 0
+      ;;
+    *) echo "Opção inválida, tente novamente.";;
+  esac
+done
+
+# ======== OUTRAS CONFIGURAÇÕES ==========
 read -p "Informe o domínio do site (ex: exemplo.com): " WEBSITE_NAME
-read -p "Informe a versão do PHP para compilar (ex: 8.3.3): " PHP_VERSION
 read -p "Deseja instalar o Nginx? (s/n): " INSTALL_NGINX
 read -p "Deseja instalar o MariaDB? (s/n): " INSTALL_MYSQL
 read -p "Deseja criar um banco de dados automaticamente? (s/n): " CREATE_DATABASE
@@ -38,23 +49,18 @@ fi
 
 banner "🚀 Iniciando Instalação Automática..."
 
-# Atualiza sistema
-echo -e "\n---- Atualizando sistema ----"
+# ======== ATUALIZA SISTEMA E DEPENDÊNCIAS ==========
 apt update -y && apt upgrade -y
-
-# Instala dependências base
-echo -e "\n---- Instalando dependências de compilação ----"
 apt install -y build-essential pkg-config autoconf bison re2c libxml2-dev \
 libsqlite3-dev libssl-dev libcurl4-openssl-dev libjpeg-dev libpng-dev \
-libxpm-dev libwebp-dev libfreetype6-dev libzip-dev libonig-dev libicu-dev \
-libreadline-dev libxslt1-dev libtidy-dev libgmp-dev libmysqlclient-dev unzip wget curl git
+libwebp-dev libfreetype6-dev libzip-dev libonig-dev libicu-dev libreadline-dev \
+libxslt1-dev libtidy-dev libgmp-dev libmysqlclient-dev unzip wget curl git
 
-# Baixa e compila PHP manualmente
+# ======== COMPILAÇÃO MANUAL DO PHP ==========
 banner "🧱 Compilando PHP ${PHP_VERSION} manualmente..."
-
 cd /usr/local/src
-wget https://www.php.net/distributions/php-${PHP_VERSION}.tar.gz || {
-  echo "❌ Versão PHP inválida ou indisponível em php.net"
+wget -q https://www.php.net/distributions/php-${PHP_VERSION}.tar.gz || {
+  echo "❌ Erro: versão do PHP não encontrada em php.net"
   exit 1
 }
 tar -xzf php-${PHP_VERSION}.tar.gz
@@ -62,18 +68,31 @@ cd php-${PHP_VERSION}
 
 ./configure --prefix=/usr/local/php-${PHP_VERSION} \
   --enable-fpm --with-fpm-user=www-data --with-fpm-group=www-data \
-  --enable-mbstring --with-curl --with-openssl --with-zlib \
-  --enable-bcmath --with-mysqli --with-pdo-mysql \
-  --enable-intl --with-zip --with-gd --with-jpeg --with-webp --enable-opcache
+  --with-fpm-systemd --enable-mbstring --with-curl --with-openssl --with-zlib \
+  --enable-bcmath --with-mysqli --with-pdo-mysql --enable-intl --with-zip \
+  --with-gd --with-jpeg --with-webp --enable-opcache
 
 make -j$(nproc)
 make install
 
-# Configuração PHP-FPM
+# ======== CONFIGURAÇÃO DO PHP-FPM ==========
+mkdir -p /usr/local/php-${PHP_VERSION}/etc/php-fpm.d
 cp sapi/fpm/php-fpm.conf /usr/local/php-${PHP_VERSION}/etc/php-fpm.conf
-cp sapi/fpm/www.conf /usr/local/php-${PHP_VERSION}/etc/php-fpm.d/www.conf
 
-# Adiciona php.ini básico
+cat <<EOF > /usr/local/php-${PHP_VERSION}/etc/php-fpm.d/www.conf
+[www]
+user = www-data
+group = www-data
+listen = /run/php-fpm.sock
+listen.owner = www-data
+listen.group = www-data
+pm = dynamic
+pm.max_children = 10
+pm.start_servers = 2
+pm.min_spare_servers = 1
+pm.max_spare_servers = 3
+EOF
+
 cat <<EOF > /usr/local/php-${PHP_VERSION}/lib/php.ini
 [PHP]
 date.timezone = America/Sao_Paulo
@@ -84,16 +103,17 @@ post_max_size = 50M
 max_execution_time = 180
 EOF
 
-# Cria serviço systemd do PHP-FPM
+# ======== SYSTEMD PHP-FPM ==========
 cat <<EOF > /etc/systemd/system/php${PHP_VERSION}-fpm.service
 [Unit]
-Description=The PHP ${PHP_VERSION} FastCGI Process Manager
+Description=PHP ${PHP_VERSION} FPM
 After=network.target
 
 [Service]
 Type=simple
 ExecStart=/usr/local/php-${PHP_VERSION}/sbin/php-fpm --nodaemonize --fpm-config /usr/local/php-${PHP_VERSION}/etc/php-fpm.conf
 ExecReload=/bin/kill -USR2 \$MAINPID
+PIDFile=/run/php-fpm.pid
 Restart=always
 
 [Install]
@@ -104,7 +124,7 @@ systemctl daemon-reload
 systemctl enable php${PHP_VERSION}-fpm
 systemctl start php${PHP_VERSION}-fpm
 
-# Instala Nginx se selecionado
+# ======== INSTALA NGINX SE ESCOLHIDO ==========
 if [[ "$INSTALL_NGINX" =~ ^[Ss]$ ]]; then
   banner "🌐 Instalando Nginx..."
   apt install -y nginx
@@ -124,7 +144,7 @@ server {
 
   location ~ \.php\$ {
     include snippets/fastcgi-php.conf;
-    fastcgi_pass unix:/run/php-fpm-${PHP_VERSION}.sock;
+    fastcgi_pass unix:/run/php-fpm.sock;
   }
 
   location ~ /\.ht {
@@ -138,7 +158,7 @@ EOF
   systemctl restart nginx
 fi
 
-# Instala MariaDB se selecionado
+# ======== INSTALA MARIADB SE ESCOLHIDO ==========
 if [[ "$INSTALL_MYSQL" =~ ^[Ss]$ ]]; then
   banner "🗄️ Instalando MariaDB..."
   apt install -y mariadb-server
@@ -165,10 +185,6 @@ fi
 banner "✅ Instalação concluída!"
 echo "PHP compilado manualmente em: /usr/local/php-${PHP_VERSION}"
 echo "Verifique com: /usr/local/php-${PHP_VERSION}/bin/php -v"
-echo "-----------------------------------------------------------"
 if [[ "$INSTALL_NGINX" =~ ^[Ss]$ ]]; then
-  echo "Site: http://$WEBSITE_NAME"
-  echo "Document root: /var/www/html"
+  echo "Site disponível em: http://$WEBSITE_NAME"
 fi
-echo "-----------------------------------------------------------"
-echo "Sistema pronto para uso!"
