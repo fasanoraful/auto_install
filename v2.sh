@@ -1,211 +1,130 @@
 #!/bin/bash
-# ==========================================================
-# setup_php_nginx_full.sh
-# Instalação LEMP (opção apt ou compilar PHP) + detecção automática do socket
-# Inclui modo --reset para limpar (remover) Nginx, PHP e configs.
-# ==========================================================
+################################################################################
+# Instalação manual LEMP (Linux, Nginx, MariaDB, PHP compilado) - Ubuntu 20+
+#-------------------------------------------------------------------------------
+# Autor: Victor Fasano (versão aprimorada: limpeza + detecção socket)
+# Compatível com Ubuntu 20.04, 22.04, 24.04
+################################################################################
 
-set -o errexit
-set -o pipefail
-set -o nounset
+function banner() {
+  echo "+-----------------------------------------------------------------------+"
+  printf "| %-65s |\n" "$(date)"
+  echo "|                                                                       |"
+  printf "| %-65s |\n" "$1"
+  echo "+-----------------------------------------------------------------------+"
+}
 
-# ---------- Helpers ----------
-title(){ echo -e "\n\033[1;36m==> $1\033[0m\n"; }
-err(){ echo -e "\033[1;31m[ERR]\033[0m $1"; }
-info(){ echo -e "\033[1;33m[...]\033[0m $1"; }
+function show_progress() {
+    local pid=$1
+    local delay=1
+    local spinstr='|/-\'
+    while [ -d /proc/$pid ]; do
+        local temp=${spinstr#?}
+        printf " [%c]  " "$spinstr"
+        local spinstr=$temp${spinstr%"$temp"}
+        sleep $delay
+        printf "\b\b\b\b\b\b"
+    done
+    printf "    \b\b\b\b"
+}
 
 if [ "$(whoami)" != "root" ]; then
-  err "Execute com root: sudo -i"
+  echo "❌ Execute este script como root (use: sudo -i)"
   exit 1
 fi
 
-# ---------- Reset mode ----------
-reset_all(){
-  title "Reset total: removendo Nginx, PHP e artefatos"
-  systemctl stop nginx 2>/dev/null || true
-  systemctl stop php*-fpm 2>/dev/null || true
-  apt-get remove --purge -y nginx nginx-common nginx-core php* php-fpm* mariadb-server mariadb-client || true
-  apt-get autoremove -y
-  apt-get autoclean -y
+banner "⚠️  Limpando instalações antigas de LEMP/PHP/PhpMyAdmin..."
 
-  rm -rf /etc/nginx /var/www/html /usr/local/php* /usr/src/php-* /run/php* /etc/systemd/system/php*-fpm* /etc/php /usr/local/bin/php-fpm || true
-  systemctl daemon-reload || true
+# ======== LIMPEZA DE INSTALAÇÕES ANTIGAS ========
+systemctl stop nginx 2>/dev/null
+systemctl stop mariadb 2>/dev/null
+systemctl stop php*-fpm 2>/dev/null
 
-  echo "✅ Reset completo."
-  exit 0
-}
+systemctl disable nginx 2>/dev/null
+systemctl disable mariadb 2>/dev/null
+systemctl disable php*-fpm 2>/dev/null
+rm -f /etc/systemd/system/php*-fpm.service
+systemctl daemon-reload
 
-if [[ "${1:-}" == "--reset" ]]; then
-  reset_all
-fi
+apt purge -y nginx mariadb-server mariadb-client mariadb-common php*-fpm php-mbstring php-zip php-gd php-curl php-xml unzip wget
+apt autoremove -y
 
-# ---------- Perguntas iniciais ----------
-title "Instalação LEMP - escolha modo de instalação"
+rm -rf /usr/local/php-* /usr/share/phpmyadmin /var/www/html/phpmyadmin
+rm -f /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default
 
-PS3="Escolha uma opção: "
-options=("Instalar (APT) PHP x.y-fpm" "Compilar PHP manualmente" "Executar reset (--reset)" "Sair")
+banner "✅ Limpeza concluída!"
+
+# ======== SELEÇÃO DE VERSÃO DO PHP ==========
+echo ""
+echo "Selecione a versão do PHP para compilar:"
+options=("8.0.30" "8.1.29" "8.2.23" "8.3.3" "Cancelar")
 select opt in "${options[@]}"; do
   case $opt in
-    "Instalar (APT) PHP x.y-fpm") MODE="apt"; break;;
-    "Compilar PHP manualmente") MODE="compile"; break;;
-    "Executar reset (--reset)") reset_all; break;;
-    "Sair") exit 0;;
-    *) echo "Opção inválida";;
+    "8.0.30"|"8.1.29"|"8.2.23"|"8.3.3")
+      PHP_VERSION=$opt
+      break
+      ;;
+    "Cancelar")
+      echo "Instalação cancelada."
+      exit 0
+      ;;
+    *) echo "Opção inválida, tente novamente."; continue;;
   esac
 done
 
-read -rp "Domínio (server_name) a configurar (ex: victor.com) : " WEBSITE_NAME
-read -rp "Instalar Nginx? (s/n) : " INSTALL_NGINX
-read -rp "Instalar MariaDB? (s/n) : " INSTALL_MYSQL
+# ======== OUTRAS CONFIGURAÇÕES ==========
+read -p "Informe o domínio do site (ex: exemplo.com): " WEBSITE_NAME
+read -p "Deseja instalar o Nginx? (s/n): " INSTALL_NGINX
+read -p "Deseja instalar o MariaDB? (s/n): " INSTALL_MYSQL
+read -p "Deseja criar um banco de dados automaticamente? (s/n): " CREATE_DATABASE
+read -p "Deseja instalar o PhpMyAdmin? (s/n): " INSTALL_PHPMYADMIN
 
-# ---------- Atualiza e instala dependências gerais ----------
-title "Atualizando sistema e instalando pacotes base"
-apt-get update -y
-apt-get upgrade -y
-apt-get install -y wget curl build-essential unzip ca-certificates gnupg lsb-release software-properties-common
-
-# ---------- Função para criar/atualizar config Nginx ----------
-write_nginx_conf(){
-  local socket="$1"
-  local conf="/etc/nginx/sites-available/${WEBSITE_NAME}"
-  cat > "$conf" <<EOF
-server {
-  listen 80;
-  listen [::]:80;
-  server_name ${WEBSITE_NAME};
-  root /var/www/html;
-  index index.php index.html index.htm;
-
-  location / {
-    try_files \$uri \$uri/ =404;
-  }
-
-  location ~ \.php\$ {
-    include snippets/fastcgi-php.conf;
-    fastcgi_pass unix:${socket};
-  }
-
-  location ~ /\.ht { deny all; }
-}
-EOF
-
-  ln -sf "$conf" /etc/nginx/sites-enabled/${WEBSITE_NAME}
-  mkdir -p /var/www/html
-  echo "<?php phpinfo(); ?>" > /var/www/html/index.php
-  chmod -R 755 /var/www/html
-}
-
-# ---------------- MODE APT ----------------
-if [[ "$MODE" == "apt" ]]; then
-  # Escolher versão apt disponível (oferecer 8.0/8.1/8.2/8.3 opções comuns)
-  title "Instalação via APT: escolha a versão do PHP (se disponível nos repositórios)"
-  apt_options=("8.0" "8.1" "8.2" "8.3" "Cancelar")
-  select ver in "${apt_options[@]}"; do
-    if [[ "$ver" == "Cancelar" ]]; then echo "Cancelado."; exit 0; fi
-    if [[ "$ver" =~ ^[0-9]\.[0-9]$ ]]; then PHP_APT_VER="$ver"; break; else echo "Escolha inválida"; fi
-  done
-
-  # Adiciona PPA ondrej (opcional) para ter múltiplas versões - mas deixo como pergunta
-  read -rp "Adicionar PPA ondrej/php para maior disponibilidade de versões? (s/n) : " ADD_PPA
-  if [[ "$ADD_PPA" =~ ^[Ss]$ ]]; then
-    add-apt-repository -y ppa:ondrej/php
-    apt-get update -y
-  fi
-
-  info "Instalando php${PHP_APT_VER}-fpm e módulos básicos..."
-  apt-get install -y "php${PHP_APT_VER}-fpm" "php${PHP_APT_VER}-cli" "php${PHP_APT_VER}-mysql" "php${PHP_APT_VER}-gd" "php${PHP_APT_VER}-mbstring" "php${PHP_APT_VER}-curl" "php${PHP_APT_VER}-zip" "php${PHP_APT_VER}-xml" || {
-    err "Falha instalando pacotes php via apt. Verifique repositórios."
-    exit 1
-  }
-
-  # socket padrão para apt-installed php is /run/php/phpX.Y-fpm.sock
-  PHP_SOCKET="/run/php/php${PHP_APT_VER}-fpm.sock"
-  PHP_SERVICE="php${PHP_APT_VER}-fpm.service"
-
-  info "Ativando e iniciando serviço ${PHP_SERVICE}..."
-  systemctl enable --now "${PHP_SERVICE}"
-
-  # Instalar Nginx e configurar
-  if [[ "$INSTALL_NGINX" =~ ^[Ss]$ ]]; then
-    info "Instalando Nginx..."
-    apt-get install -y nginx
-    ufw allow 'Nginx HTTP' || true
-    write_nginx_conf "$PHP_SOCKET"
-    systemctl enable --now nginx
-    systemctl restart nginx || true
-  fi
-
-  # instalar MariaDB se solicitado
-  if [[ "$INSTALL_MYSQL" =~ ^[Ss]$ ]]; then
-    info "Instalando MariaDB..."
-    apt-get install -y mariadb-server
-    systemctl enable --now mariadb
-  fi
-
-  # Verificações
-  sleep 2
-  title "Verificações rápidas"
-  echo "PHP-FPM socket esperado: $PHP_SOCKET"
-  ls -l "$PHP_SOCKET" 2>/dev/null || echo "❗ Socket não encontrado ainda, verifique 'systemctl status ${PHP_SERVICE}' e logs."
-  systemctl status "$PHP_SERVICE" --no-pager | sed -n '1,5p' || true
-  if [[ "$INSTALL_NGINX" =~ ^[Ss]$ ]]; then
-    systemctl status nginx --no-pager | sed -n '1,5p' || true
-    curl -s -I http://localhost | sed -n '1p' || true
-  fi
-
-  echo -e "\n✅ Instalação via APT concluída. Acesse http://${WEBSITE_NAME} (ou localhost)."
-  exit 0
+if [[ "$CREATE_DATABASE" =~ ^[Ss]$ ]]; then
+  read -p "Nome do banco de dados: " DATABASE_NAME
+  read -p "Senha do usuário root do banco: " MYSQL_PASSWORD_SET
 fi
 
-# ---------------- MODE COMPILE ----------------
-if [[ "$MODE" == "compile" ]]; then
-  title "Compilar PHP manualmente"
+banner "🚀 Iniciando Instalação Automática..."
 
-  # Versões disponíveis para compilar
-  versions=("8.0.30" "8.1.29" "8.2.23" "8.3.3" "Cancelar")
-  PS3="Escolha versão para compilar: "
-  select ver in "${versions[@]}"; do
-    if [[ "$ver" == "Cancelar" ]]; then echo "Cancelado."; exit 0; fi
-    if [[ "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then PHP_VERSION_FULL="$ver"; break; else echo "Inválido"; fi
-  done
+# ======== ATUALIZA SISTEMA ==========
+apt update -y && apt upgrade -y
+apt install -y build-essential pkg-config autoconf bison re2c libxml2-dev \
+libsqlite3-dev libssl-dev libcurl4-openssl-dev libjpeg-dev libpng-dev \
+libwebp-dev libfreetype6-dev libzip-dev libonig-dev libicu-dev libreadline-dev \
+libxslt1-dev libtidy-dev libgmp-dev libmysqlclient-dev unzip wget curl git
 
-  # Dependências de build
-  title "Instalando dependências de compilação"
-  apt-get update -y
-  apt-get install -y build-essential pkg-config autoconf bison re2c libxml2-dev \
-    libsqlite3-dev libssl-dev libcurl4-openssl-dev libjpeg-dev libpng-dev \
-    libwebp-dev libfreetype6-dev libzip-dev libonig-dev libicu-dev libreadline-dev \
-    libxslt1-dev libgmp-dev libmysqlclient-dev wget tar
+# ======== COMPILAÇÃO MANUAL DO PHP ==========
+banner "🧱 Compilando PHP ${PHP_VERSION} manualmente..."
+cd /usr/local/src || exit 1
+wget -q https://www.php.net/distributions/php-${PHP_VERSION}.tar.gz || {
+  echo "❌ Erro: versão do PHP não encontrada em php.net"
+  exit 1
+}
+tar -xzf php-${PHP_VERSION}.tar.gz
+cd php-${PHP_VERSION} || exit 1
 
-  cd /usr/src || exit 1
-  if [ ! -f "php-${PHP_VERSION_FULL}.tar.gz" ]; then
-    info "Baixando php-${PHP_VERSION_FULL}.tar.gz"
-    wget -q "https://www.php.net/distributions/php-${PHP_VERSION_FULL}.tar.gz"
-  fi
-  tar -xzf "php-${PHP_VERSION_FULL}.tar.gz" -C /usr/src || true
-  cd "php-${PHP_VERSION_FULL}" || { err "Fonte php não encontrada"; exit 1; }
+./configure --prefix=/usr/local/php-${PHP_VERSION} \
+  --enable-fpm --with-fpm-user=www-data --with-fpm-group=www-data \
+  --enable-mbstring --with-curl --with-openssl --with-zlib \
+  --enable-bcmath --with-mysqli --with-pdo-mysql --enable-intl --with-zip \
+  --with-gd --with-jpeg --with-webp --enable-opcache > /tmp/configure.log 2>&1 &
+show_progress $!
 
-  # Configure - exibir saída
-  title "Executando ./configure (essa etapa pode demorar)"
-  ./configure --prefix=/usr/local/php-"${PHP_VERSION_FULL}" \
-    --enable-fpm --with-fpm-user=www-data --with-fpm-group=www-data \
-    --with-zlib --with-curl --enable-mbstring --with-openssl \
-    --with-pdo-mysql --with-zip --with-jpeg --with-png --enable-opcache \
-    2>&1 | tee /tmp/php_configure.log
+make -j"$(nproc)" > /tmp/make.log 2>&1 &
+show_progress $!
 
-  title "make - compilando (mostrando saída)..."
-  make -j"$(nproc)" 2>&1 | tee /tmp/php_make.log
+make install > /tmp/make_install.log 2>&1 &
+show_progress $!
 
-  title "make install..."
-  make install 2>&1 | tee /tmp/php_make_install.log
+# ======== CONFIGURAÇÃO DO PHP-FPM ==========
+mkdir -p /usr/local/php-${PHP_VERSION}/etc/php-fpm.d
+cp sapi/fpm/php-fpm.conf /usr/local/php-${PHP_VERSION}/etc/php-fpm.conf
 
-  # Configurar PHP-FPM confs
-  title "Configurando PHP-FPM e systemd"
-  mkdir -p /usr/local/php-"${PHP_VERSION_FULL}"/etc/php-fpm.d
-  cp sapi/fpm/php-fpm.conf /usr/local/php-"${PHP_VERSION_FULL}"/etc/php-fpm.conf || true
-  # Ajusta www.conf para socket por versão
-  SOCKET_PATH="/run/php-fpm-${PHP_VERSION_FULL}.sock"
-  cat > /usr/local/php-"${PHP_VERSION_FULL}"/etc/php-fpm.d/www.conf <<EOF
+# Criar diretório de sockets
+mkdir -p /run/php
+SOCKET_PATH="/run/php/php-fpm-${PHP_VERSION}.sock"
+
+cat <<EOF > /usr/local/php-${PHP_VERSION}/etc/php-fpm.d/www.conf
 [www]
 user = www-data
 group = www-data
@@ -219,70 +138,145 @@ pm.min_spare_servers = 1
 pm.max_spare_servers = 3
 EOF
 
-  # php.ini básico
-  cp php.ini-development /usr/local/php-"${PHP_VERSION_FULL}"/lib/php.ini || true
-  sed -i "s~;date.timezone =.*~date.timezone = America/Sao_Paulo~" /usr/local/php-"${PHP_VERSION_FULL}"/lib/php.ini || true
+cat <<EOF > /usr/local/php-${PHP_VERSION}/lib/php.ini
+[PHP]
+date.timezone = America/Sao_Paulo
+display_errors = On
+memory_limit = 512M
+upload_max_filesize = 50M
+post_max_size = 50M
+max_execution_time = 180
+EOF
 
-  # Links úteis
-  ln -sf /usr/local/php-"${PHP_VERSION_FULL}"/sbin/php-fpm /usr/local/bin/php-fpm-"${PHP_VERSION_FULL}"
-  ln -sf /usr/local/php-"${PHP_VERSION_FULL}"/bin/php /usr/local/bin/php-"${PHP_VERSION_FULL}"
-
-  # systemd service
-  SERVICE_NAME="php${PHP_VERSION_FULL}-custom.service"
-  cat > /etc/systemd/system/"${SERVICE_NAME}" <<EOF
+# ======== SYSTEMD PHP-FPM ==========
+cat <<EOF > /etc/systemd/system/php${PHP_VERSION}-fpm.service
 [Unit]
-Description=PHP ${PHP_VERSION_FULL} FPM (custom)
+Description=PHP ${PHP_VERSION} FPM
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/php-${PHP_VERSION_FULL}/sbin/php-fpm --nodaemonize --fpm-config /usr/local/php-${PHP_VERSION_FULL}/etc/php-fpm.conf
+ExecStart=/usr/local/php-${PHP_VERSION}/sbin/php-fpm --nodaemonize --fpm-config /usr/local/php-${PHP_VERSION}/etc/php-fpm.conf
 ExecReload=/bin/kill -USR2 \$MAINPID
+PIDFile=/run/php/php-fpm-${PHP_VERSION}.pid
 Restart=always
-PIDFile=/run/php-fpm-${PHP_VERSION_FULL}.pid
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-  systemctl daemon-reload
-  systemctl enable --now "${SERVICE_NAME}"
+systemctl daemon-reload
+systemctl enable php${PHP_VERSION}-fpm
+systemctl start php${PHP_VERSION}-fpm
 
-  # Define PHP_SOCKET para uso posterior
-  PHP_SOCKET="${SOCKET_PATH}"
-  PHP_SERVICE="${SERVICE_NAME}"
+# ======== AGUARDAR SOCKET ==========
+echo "⏳ Aguardando PHP-FPM criar o socket..."
+for i in {1..10}; do
+    if [ -S "$SOCKET_PATH" ]; then
+        echo "✅ Socket PHP detectado em: $SOCKET_PATH"
+        break
+    fi
+    sleep 1
+done
 
-  # Instalar Nginx se solicitado
-  if [[ "$INSTALL_NGINX" =~ ^[Ss]$ ]]; then
-    info "Instalando Nginx..."
-    apt-get install -y nginx
-    ufw allow 'Nginx HTTP' || true
-    write_nginx_conf "${PHP_SOCKET}"
-    systemctl enable --now nginx
-    systemctl restart nginx || true
-  fi
-
-  # MariaDB
-  if [[ "$INSTALL_MYSQL" =~ ^[Ss]$ ]]; then
-    info "Instalando MariaDB..."
-    apt-get install -y mariadb-server
-    systemctl enable --now mariadb
-  fi
-
-  # Verificações
-  sleep 2
-  title "Verificações pós-compilação"
-  echo "Socket do PHP-FPM esperado: ${PHP_SOCKET}"
-  ls -l "${PHP_SOCKET}" 2>/dev/null || echo "❗ Socket não encontrado ainda. Verifique 'systemctl status ${SERVICE_NAME}' e os logs em journalctl -u ${SERVICE_NAME}"
-
-  systemctl status "${SERVICE_NAME}" --no-pager | sed -n '1,6p' || true
-  if [[ "$INSTALL_NGINX" =~ ^[Ss]$ ]]; then
-    systemctl status nginx --no-pager | sed -n '1,6p' || true
-    curl -s -I http://localhost | sed -n '1p' || true
-  fi
-
-  echo -e "\n✅ PHP compilado e serviços configurados. Acesse http://${WEBSITE_NAME}"
-  exit 0
+if [ ! -S "$SOCKET_PATH" ]; then
+    echo "❌ Não foi possível detectar o socket do PHP-FPM!"
+    echo "Verifique se o serviço php${PHP_VERSION}-fpm está ativo com: systemctl status php${PHP_VERSION}-fpm"
+    exit 1
 fi
 
-# ------------- FIM -------------
+# ======== INSTALA NGINX SE ESCOLHIDO ==========
+if [[ "$INSTALL_NGINX" =~ ^[Ss]$ ]]; then
+  banner "🌐 Instalando Nginx..."
+  apt install -y nginx
+  ufw allow 'Nginx HTTP'
+
+  cat <<EOF > /etc/nginx/sites-available/default
+server {
+  listen 80 default_server;
+  listen [::]:80 default_server;
+  root /var/www/html;
+  index index.php index.html index.htm;
+  server_name $WEBSITE_NAME;
+
+  location / {
+    try_files \$uri \$uri/ =404;
+  }
+
+  location ~ \.php\$ {
+    include snippets/fastcgi-php.conf;
+    fastcgi_pass unix:${SOCKET_PATH};
+  }
+
+  location ~ /\.ht {
+    deny all;
+  }
+
+  location /phpmyadmin {
+    root /usr/share;
+    index index.php index.html index.htm;
+    location ~ ^/phpmyadmin/(.+\.php)\$ {
+      try_files \$uri =404;
+      root /usr/share/;
+      fastcgi_pass unix:${SOCKET_PATH};
+      fastcgi_index index.php;
+      fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+      include /etc/nginx/fastcgi_params;
+    }
+    location ~* ^/phpmyadmin/(.+\.(jpg|jpeg|gif|css|png|js|ico|html|xml|txt))\$ {
+      root /usr/share/;
+    }
+  }
+}
+EOF
+
+  echo "<?php phpinfo(); ?>" > /var/www/html/index.php
+  systemctl enable nginx
+  systemctl restart nginx
+fi
+
+# ======== INSTALA MARIADB SE ESCOLHIDO ==========
+if [[ "$INSTALL_MYSQL" =~ ^[Ss]$ ]]; then
+  banner "🗄️ Instalando MariaDB..."
+  apt install -y mariadb-server
+  systemctl enable mariadb
+  systemctl start mariadb
+
+  if [[ "$CREATE_DATABASE" =~ ^[Ss]$ ]]; then
+    banner "📦 Criando banco de dados..."
+    mysql -u root <<MYSQL_SCRIPT
+ALTER USER 'root'@'localhost' IDENTIFIED BY '${MYSQL_PASSWORD_SET}';
+CREATE DATABASE IF NOT EXISTS ${DATABASE_NAME};
+FLUSH PRIVILEGES;
+MYSQL_SCRIPT
+    cat <<EOF > ~/database.txt
+Host: localhost
+Database: ${DATABASE_NAME}
+User: root
+Password: ${MYSQL_PASSWORD_SET}
+EOF
+    echo "✅ Banco criado e senha configurada! Dados em ~/database.txt"
+  fi
+fi
+
+# ======== INSTALA PHPMYADMIN SE ESCOLHIDO ==========
+if [[ "$INSTALL_PHPMYADMIN" =~ ^[Ss]$ ]]; then
+  banner "📦 Instalando PhpMyAdmin..."
+  apt install -y php-mbstring php-zip php-gd php-curl php-xml unzip wget
+  wget https://files.phpmyadmin.net/phpMyAdmin/5.2.1/phpMyAdmin-5.2.1-all-languages.zip -O /tmp/phpmyadmin.zip
+  unzip /tmp/phpmyadmin.zip -d /usr/share/
+  mv /usr/share/phpMyAdmin-5.2.1-all-languages /usr/share/phpmyadmin
+  ln -s /usr/share/phpmyadmin /var/www/html/phpmyadmin
+  systemctl restart nginx
+fi
+
+banner "✅ Instalação concluída!"
+echo "PHP compilado manualmente em: /usr/local/php-${PHP_VERSION}"
+echo "Socket detectado: ${SOCKET_PATH}"
+echo "Verifique com: /usr/local/php-${PHP_VERSION}/bin/php -v"
+if [[ "$INSTALL_NGINX" =~ ^[Ss]$ ]]; then
+  echo "Site disponível em: http://$WEBSITE_NAME"
+fi
+if [[ "$INSTALL_PHPMYADMIN" =~ ^[Ss]$ ]]; then
+  echo "PhpMyAdmin disponível em: http://$WEBSITE_NAME/phpmyadmin"
+fi
