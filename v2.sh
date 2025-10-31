@@ -46,63 +46,67 @@ apt-get install -y build-essential curl git wget unzip tar pkg-config libxml2-de
 # INSTALAÇÃO DO NGINX
 # ========================
 if [ "$INSTALL_NGINX" = "True" ]; then
-  echo -e "\n---- Installing Nginx Web Server ----"
-  apt-get install nginx -y
-  ufw allow 'Nginx HTTP'
+ echo -e "\n---- Installing Nginx Web Server ----"
+apt-get install nginx -y
+ufw allow 'Nginx HTTP'
 
-  cat <<EOF > /etc/nginx/sites-available/default
+cat <<EOF > /etc/nginx/sites-available/default
 server {
-  listen 80 default_server;
-  client_max_body_size 0;
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
 
-  root /var/www/html;
-  index index.php index.html index.htm;
-
-  # Sem server_name — responde para qualquer domínio ou IP
-
-  location / {
-    if ($http_user_agent ~* "curl") {
-        return 403;
-    }
-    try_files $uri $uri/ /index.php?$query_string;
-  }
-
-  location ~ \.php$ {
-    include snippets/fastcgi-php.conf;
-    fastcgi_pass unix:/run/php-fpm.sock;
-  }
-
-  location ~ /\.ht {
-    deny all;
-  }
-
-  location /phpmyadmin {
-    root /usr/share;
-
-    auth_basic "Área restrita";
-    auth_basic_user_file /etc/phpmyadmin/.htpasswd;
-
+    root /var/www/html;
     index index.php index.html index.htm;
-    location ~ ^/phpmyadmin/(.+\.php)$ {
-      try_files $uri =404;
-      root /usr/share/;
-      fastcgi_pass unix:/run/php-fpm.sock;
-      fastcgi_index index.php;
-      fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-      include /etc/nginx/fastcgi_params;
-    }
-    location ~* ^/phpmyadmin/(.+\.(jpg|jpeg|gif|css|png|js|ico|html|xml|txt))$ {
-      root /usr/share/;
-    }
-  }
 
-  location /otservlist_verification133566z {
-      allow 178.33.50.155;
-      allow 94.23.92.210;
-  }
+    client_max_body_size 100M;
+
+    location / {
+        try_files \$uri \$uri/ /index.php?\$query_string;
+    }
+
+    location ~ \.php\$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php-fpm.sock;
+        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+        include fastcgi_params;
+    }
+
+    # Bloqueia .htaccess / .htpasswd
+    location ~ /\.ht {
+        deny all;
+    }
+
+    # phpMyAdmin
+    location /phpmyadmin {
+        alias /usr/share/phpmyadmin;
+
+        auth_basic "Área restrita";
+        auth_basic_user_file /etc/phpmyadmin/.htpasswd;
+
+        index index.php index.html index.htm;
+
+        location ~ ^/phpmyadmin/(.+\.php)\$ {
+            try_files \$uri =404;
+            fastcgi_pass unix:/run/php-fpm.sock;
+            fastcgi_index index.php;
+            fastcgi_param SCRIPT_FILENAME \$request_filename;
+            include fastcgi_params;
+        }
+
+        location ~* ^/phpmyadmin/(.+\.(jpg|jpeg|gif|css|png|js|ico|html|xml|txt))\$ {
+            alias /usr/share/phpmyadmin/;
+        }
+    }
+
+    # Otservlist Verification
+    location /otservlist_verification133566z {
+        allow 178.33.50.155;
+        allow 94.23.92.210;
+        deny all;
+    }
 }
 EOF
-
   nginx -t && systemctl reload nginx
   echo "CONGRATULATIONS! Website is working. Remove this index.html page and put your website files" > /var/www/html/index.html
 fi
