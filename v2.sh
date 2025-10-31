@@ -40,7 +40,7 @@ banner "Automatic LAMP Server Installation Started. Please wait! This might take
 # Atualização e dependências
 echo -e "\n---- Updating Server ----"
 apt-get update -y
-apt-get install -y build-essential curl git wget unzip tar pkg-config libxml2-dev libsqlite3-dev libssl-dev libcurl4-openssl-dev libjpeg-dev libpng-dev libwebp-dev libfreetype6-dev libonig-dev libzip-dev libreadline-dev libxslt1-dev libicu-dev zlib1g-dev mariadb-client
+apt-get install -y build-essential curl git wget unzip tar pkg-config libxml2-dev libsqlite3-dev libssl-dev libcurl4-openssl-dev libjpeg-dev libpng-dev libwebp-dev libfreetype6-dev libonig-dev libzip-dev libreadline-dev libxslt1-dev libicu-dev zlib1g-dev mariadb-client apache2-utils
 
 # ========================
 # INSTALAÇÃO DO NGINX
@@ -108,6 +108,8 @@ server {
 }
 EOF
   nginx -t && systemctl reload nginx
+  sudo mkdir -p /etc/phpmyadmin
+  sudo bash -c 'echo "root:$(openssl passwd -apr1 ${MYSQL_PASSWORD_SET})" > /etc/phpmyadmin/.htpasswd'
   echo "CONGRATULATIONS! Website is working. Remove this index.html page and put your website files" > /var/www/html/index.html
 fi
 
