@@ -108,7 +108,6 @@ server {
 }
 EOF
   nginx -t && systemctl reload nginx
-  sudo mkdir -p /etc/phpmyadmin && sudo bash -c 'echo "root:$(openssl passwd -apr1 ${MYSQL_PASSWORD_SET})" > /etc/phpmyadmin/.htpasswd'
   echo "CONGRATULATIONS! Website is working. Remove this index.html page and put your website files" > /var/www/html/index.html
 fi
 
@@ -260,6 +259,9 @@ fi
 # ========================
 # FINAL
 # ========================
+
+sudo mkdir -p /etc/phpmyadmin && sudo bash -c 'echo "root:$(openssl passwd -apr1 ${MYSQL_PASSWORD_SET})" > /etc/phpmyadmin/.htpasswd'
+
 echo "-----------------------------------------------------------"
 echo "✅ Setup complete!"
 echo "Website: http://$WEBSITE_NAME"
