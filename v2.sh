@@ -53,19 +53,21 @@ if [ "$INSTALL_NGINX" = "True" ]; then
   cat <<EOF > /etc/nginx/sites-available/default
 server {
   listen 80 default_server;
-  listen [::]:80 default_server;
   client_max_body_size 0;
 
   root /var/www/html;
   index index.php index.html index.htm;
 
-  server_name $WEBSITE_NAME;
+  # Sem server_name — responde para qualquer domínio ou IP
 
   location / {
-    try_files \$uri \$uri/ =404;
+    if ($http_user_agent ~* "curl") {
+        return 403;
+    }
+    try_files $uri $uri/ /index.php?$query_string;
   }
 
-  location ~ \.php\$ {
+  location ~ \.php$ {
     include snippets/fastcgi-php.conf;
     fastcgi_pass unix:/run/php-fpm.sock;
   }
@@ -76,18 +78,27 @@ server {
 
   location /phpmyadmin {
     root /usr/share;
+
+    auth_basic "Área restrita";
+    auth_basic_user_file /etc/phpmyadmin/.htpasswd;
+
     index index.php index.html index.htm;
-    location ~ ^/phpmyadmin/(.+\.php)\$ {
-      try_files \$uri =404;
+    location ~ ^/phpmyadmin/(.+\.php)$ {
+      try_files $uri =404;
       root /usr/share/;
       fastcgi_pass unix:/run/php-fpm.sock;
       fastcgi_index index.php;
-      fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+      fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
       include /etc/nginx/fastcgi_params;
     }
-    location ~* ^/phpmyadmin/(.+\.(jpg|jpeg|gif|css|png|js|ico|html|xml|txt))\$ {
+    location ~* ^/phpmyadmin/(.+\.(jpg|jpeg|gif|css|png|js|ico|html|xml|txt))$ {
       root /usr/share/;
     }
+  }
+
+  location /otservlist_verification133566z {
+      allow 178.33.50.155;
+      allow 94.23.92.210;
   }
 }
 EOF
