@@ -55,6 +55,7 @@ cd php-$PHP_VERSION
 --enable-mysqlnd \
 --with-mysqli \
 --with-pdo-mysql \
+--with-gmp \
 --enable-opcache
 
 make -j$(nproc)
