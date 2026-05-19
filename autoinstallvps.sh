@@ -5,37 +5,76 @@ set -e
 LOG_FILE="/root/install-stack.log"
 : > "$LOG_FILE"
 
-TOTAL_STEPS=12
-CURRENT_STEP=0
+progress_pid=""
 
-show_progress() {
-    CURRENT_STEP=$((CURRENT_STEP + 1))
-    PERCENT=$((CURRENT_STEP * 100 / TOTAL_STEPS))
+start_progress() {
+    local message="$1"
+    local i=0
+    local bar_size=30
 
-    FILLED=$((PERCENT / 2))
-    EMPTY=$((50 - FILLED))
+    tput civis 2>/dev/null || true
 
-    BAR=$(printf "%${FILLED}s" | tr ' ' '#')
-    SPACE=$(printf "%${EMPTY}s")
+    while true; do
+        local pos=$((i % bar_size))
+        local bar=""
 
-    printf "\rEstamos instalando, aguarde... [%s%s] %d%%" "$BAR" "$SPACE" "$PERCENT"
+        for ((j=0; j<bar_size; j++)); do
+            if [ "$j" -le "$pos" ]; then
+                bar+="#"
+            else
+                bar+="."
+            fi
+        done
+
+        printf "\r%s [%s]" "$message" "$bar"
+        sleep 0.1
+        i=$((i + 1))
+    done
+}
+
+stop_progress() {
+    if [ -n "$progress_pid" ]; then
+        kill "$progress_pid" >/dev/null 2>&1 || true
+        wait "$progress_pid" 2>/dev/null || true
+        progress_pid=""
+    fi
+
+    tput cnorm 2>/dev/null || true
+    printf "\r%-100s\r"
 }
 
 run_step() {
+    local message="$1"
+    shift
+
+    start_progress "$message" &
+    progress_pid=$!
+
     "$@" >> "$LOG_FILE" 2>&1
+
+    stop_progress
 }
 
-# ==============================
-# ATUALIZAÇÃO
-# ==============================
-run_step apt update -y
-run_step apt upgrade -y
-show_progress
+fail() {
+    stop_progress
+    echo
+    echo "Erro durante a instalação."
+    echo "Verifique o log em: $LOG_FILE"
+    exit 1
+}
+
+trap fail ERR
 
 # ==============================
-# DEPENDÊNCIAS
+# Atualizando sistema
 # ==============================
-run_step apt install -y build-essential pkg-config \
+run_step "Estamos instalando, aguarde..." apt update -y
+run_step "Estamos instalando, aguarde..." apt upgrade -y
+
+# ==============================
+# Instalando dependências
+# ==============================
+run_step "Estamos instalando, aguarde..." apt install -y build-essential pkg-config \
 libxml2-dev libsqlite3-dev libssl-dev \
 libcurl4-openssl-dev libonig-dev libzip-dev \
 libpng-dev libjpeg-dev libwebp-dev \
@@ -43,7 +82,6 @@ libfreetype6-dev libicu-dev libxslt1-dev \
 libgettextpo-dev zlib1g-dev \
 libgmp-dev \
 nginx mariadb-server wget curl unzip openssl
-show_progress
 
 # ==============================
 # PHP
@@ -60,12 +98,12 @@ done
 
 cd /usr/local/src
 
-run_step wget https://www.php.net/distributions/php-$PHP_VERSION.tar.gz
-run_step tar -xzf php-$PHP_VERSION.tar.gz
-cd php-$PHP_VERSION
-show_progress
+run_step "Estamos instalando, aguarde..." wget https://www.php.net/distributions/php-$PHP_VERSION.tar.gz
+run_step "Estamos instalando, aguarde..." tar -xzf php-$PHP_VERSION.tar.gz
 
-run_step ./configure --prefix=/usr/local/php \
+cd php-$PHP_VERSION
+
+run_step "Estamos instalando, aguarde..." ./configure --prefix=/usr/local/php \
 --enable-fpm \
 --with-fpm-user=www-data \
 --with-fpm-group=www-data \
@@ -89,14 +127,12 @@ run_step ./configure --prefix=/usr/local/php \
 --with-mysqli \
 --with-pdo-mysql \
 --enable-opcache
-show_progress
 
 MAKE_THREADS=$(nproc)
 [ "$MAKE_THREADS" -gt 4 ] && MAKE_THREADS=4
 
-run_step make -j$MAKE_THREADS
-run_step make install
-show_progress
+run_step "Estamos instalando, aguarde..." make -j$MAKE_THREADS
+run_step "Estamos instalando, aguarde..." make install
 
 mkdir -p /usr/local/php/lib
 cp php.ini-production /usr/local/php/lib/php.ini
@@ -135,8 +171,8 @@ pm.max_requests = 300
 EOF
 
 mkdir -p /run
-run_step /usr/local/php/sbin/php-fpm
-show_progress
+
+run_step "Estamos instalando, aguarde..." /usr/local/php/sbin/php-fpm
 
 for i in {1..10}; do
     [ -S "/run/php-fpm.sock" ] && break
@@ -170,16 +206,15 @@ server {
 }
 EOF
 
-run_step systemctl restart nginx
+run_step "Estamos instalando, aguarde..." systemctl restart nginx
 
 echo "<?php echo 'Servidor OK'; ?>" > /var/www/html/index.php
 chown -R www-data:www-data /var/www/html
-show_progress
 
 # ==============================
 # MARIADB
 # ==============================
-run_step systemctl start mariadb
+run_step "Estamos instalando, aguarde..." systemctl start mariadb
 
 cat > /etc/mysql/mariadb.conf.d/99-performance.cnf <<EOF
 [mysqld]
@@ -204,27 +239,26 @@ performance_schema=OFF
 skip-name-resolve
 EOF
 
-run_step systemctl restart mariadb
+run_step "Estamos instalando, aguarde..." systemctl restart mariadb
 
 DB_ROOT_PASS=$(openssl rand -base64 16)
 DB_USER="appuser"
 DB_PASS=$(openssl rand -base64 16)
 
-run_step mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '$DB_ROOT_PASS';"
-run_step mysql -uroot -p$DB_ROOT_PASS -e "CREATE DATABASE appdb;"
-run_step mysql -uroot -p$DB_ROOT_PASS -e "CREATE USER '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASS';"
-run_step mysql -uroot -p$DB_ROOT_PASS -e "GRANT ALL PRIVILEGES ON appdb.* TO '$DB_USER'@'localhost'; FLUSH PRIVILEGES;"
-show_progress
+run_step "Estamos instalando, aguarde..." mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '$DB_ROOT_PASS';"
+run_step "Estamos instalando, aguarde..." mysql -uroot -p$DB_ROOT_PASS -e "CREATE DATABASE appdb;"
+run_step "Estamos instalando, aguarde..." mysql -uroot -p$DB_ROOT_PASS -e "CREATE USER '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASS';"
+run_step "Estamos instalando, aguarde..." mysql -uroot -p$DB_ROOT_PASS -e "GRANT ALL PRIVILEGES ON appdb.* TO '$DB_USER'@'localhost'; FLUSH PRIVILEGES;"
 
 # ==============================
-# PHPMYADMIN
+# phpMyAdmin
 # ==============================
 cd /var/www/html
 
 rm -rf phpmyadmin phpMyAdmin-*
 
-run_step wget https://www.phpmyadmin.net/downloads/phpMyAdmin-latest-all-languages.zip
-run_step unzip phpMyAdmin-latest-all-languages.zip
+run_step "Estamos instalando, aguarde..." wget https://www.phpmyadmin.net/downloads/phpMyAdmin-latest-all-languages.zip
+run_step "Estamos instalando, aguarde..." unzip phpMyAdmin-latest-all-languages.zip
 
 PMA_DIR=$(find . -maxdepth 1 -type d -name "phpMyAdmin-*")
 mv "$PMA_DIR" phpmyadmin
@@ -240,19 +274,17 @@ cat >> phpmyadmin/config.inc.php <<EOF
 EOF
 
 chown -R www-data:www-data phpmyadmin
-show_progress
 
 # ==============================
-# TESTE
+# Teste
 # ==============================
 sleep 2
 
-run_step curl -s http://localhost
-run_step curl -s http://localhost/phpmyadmin
-show_progress
+run_step "Estamos instalando, aguarde..." curl -s http://localhost
+run_step "Estamos instalando, aguarde..." curl -s http://localhost/phpmyadmin
 
 # ==============================
-# CREDENCIAIS
+# Credenciais
 # ==============================
 cat > /root/credenciais.txt <<EOF
 MYSQL ROOT: $DB_ROOT_PASS
@@ -265,9 +297,9 @@ EOF
 chmod 600 /root/credenciais.txt
 
 rm -f /var/www/html/phpMyAdmin-latest-all-languages.zip
-show_progress
 
-echo
+stop_progress
+
 echo
 echo "============================="
 echo "INSTALAÇÃO CONCLUÍDA ✔"
@@ -275,3 +307,5 @@ echo "============================="
 echo
 echo "Credenciais:"
 cat /root/credenciais.txt
+echo
+echo "Log da instalação: $LOG_FILE"
