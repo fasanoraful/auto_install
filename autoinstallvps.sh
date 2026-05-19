@@ -306,16 +306,31 @@ PMA_DIR=$(find /tmp -maxdepth 1 -type d -name "phpMyAdmin-*" | head -n 1)
 
 mv "$PMA_DIR" /usr/local/share/phpmyadmin
 
-cp /usr/local/share/phpmyadmin/config.sample.inc.php /usr/local/share/phpmyadmin/config.inc.php
-
+# ==============================
+# CONFIG.INC.PHP
+# ==============================
 BLOWFISH=$(openssl rand -base64 32)
 
-cat >> /usr/local/share/phpmyadmin/config.inc.php <<EOF
+cat > /usr/local/share/phpmyadmin/config.inc.php <<EOF
+<?php
+declare(strict_types=1);
+
+\$i = 0;
+\$i++;
+
 \$cfg['blowfish_secret'] = '$BLOWFISH';
-\$cfg['Servers'][$i]['host'] = 'localhost';
-\$cfg['Servers'][$i]['connect_type'] = 'tcp';
+
+\$cfg['Servers'][\$i]['auth_type'] = 'cookie';
+\$cfg['Servers'][\$i]['host'] = 'localhost';
+\$cfg['Servers'][\$i]['connect_type'] = 'socket';
+\$cfg['Servers'][\$i]['socket'] = '/run/mysqld/mysqld.sock';
+
+\$cfg['Servers'][\$i]['compress'] = false;
+\$cfg['Servers'][\$i]['AllowNoPassword'] = false;
+
 \$cfg['TempDir'] = '/usr/local/share/phpmyadmin/tmp';
 EOF
+
 
 mkdir -p /usr/local/share/phpmyadmin/tmp
 chown -R www-data:www-data /usr/local/share/phpmyadmin
