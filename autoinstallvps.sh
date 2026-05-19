@@ -3,12 +3,12 @@
 set -e
 
 LOG_FILE="/root/install-stack.log"
-exec > >(tee -a "$LOG_FILE") 2>&1
+: > "$LOG_FILE"
 
 TOTAL_STEPS=12
 CURRENT_STEP=0
 
-progress() {
+show_progress() {
     CURRENT_STEP=$((CURRENT_STEP + 1))
     PERCENT=$((CURRENT_STEP * 100 / TOTAL_STEPS))
 
@@ -18,30 +18,32 @@ progress() {
     BAR=$(printf "%${FILLED}s" | tr ' ' '#')
     SPACE=$(printf "%${EMPTY}s")
 
-    printf "\r[%s%s] %d%%" "$BAR" "$SPACE" "$PERCENT"
+    printf "\rEstamos instalando, aguarde... [%s%s] %d%%" "$BAR" "$SPACE" "$PERCENT"
 }
 
-clear
+run_step() {
+    "$@" >> "$LOG_FILE" 2>&1
+}
 
 # ==============================
-# Atualização
+# ATUALIZAÇÃO
 # ==============================
-apt update -y >/dev/null 2>&1
-apt upgrade -y >/dev/null 2>&1
-progress
+run_step apt update -y
+run_step apt upgrade -y
+show_progress
 
 # ==============================
-# Dependências
+# DEPENDÊNCIAS
 # ==============================
-apt install -y build-essential pkg-config \
+run_step apt install -y build-essential pkg-config \
 libxml2-dev libsqlite3-dev libssl-dev \
 libcurl4-openssl-dev libonig-dev libzip-dev \
 libpng-dev libjpeg-dev libwebp-dev \
 libfreetype6-dev libicu-dev libxslt1-dev \
 libgettextpo-dev zlib1g-dev \
 libgmp-dev \
-nginx mariadb-server wget curl unzip openssl >/dev/null 2>&1
-progress
+nginx mariadb-server wget curl unzip openssl
+show_progress
 
 # ==============================
 # PHP
@@ -58,13 +60,12 @@ done
 
 cd /usr/local/src
 
-wget -q https://www.php.net/distributions/php-$PHP_VERSION.tar.gz
-tar -xzf php-$PHP_VERSION.tar.gz
+run_step wget https://www.php.net/distributions/php-$PHP_VERSION.tar.gz
+run_step tar -xzf php-$PHP_VERSION.tar.gz
 cd php-$PHP_VERSION
+show_progress
 
-progress
-
-./configure --prefix=/usr/local/php \
+run_step ./configure --prefix=/usr/local/php \
 --enable-fpm \
 --with-fpm-user=www-data \
 --with-fpm-group=www-data \
@@ -87,39 +88,31 @@ progress
 --enable-mysqlnd \
 --with-mysqli \
 --with-pdo-mysql \
---enable-opcache >/dev/null 2>&1
+--enable-opcache
+show_progress
 
-progress
-
-# ==============================
-# COMPILAÇÃO CONTROLADA
-# ==============================
 MAKE_THREADS=$(nproc)
-
 [ "$MAKE_THREADS" -gt 4 ] && MAKE_THREADS=4
 
-make -j$MAKE_THREADS >/dev/null 2>&1
-make install >/dev/null 2>&1
-
-progress
+run_step make -j$MAKE_THREADS
+run_step make install
+show_progress
 
 mkdir -p /usr/local/php/lib
 cp php.ini-production /usr/local/php/lib/php.ini
 
-# FIX MYSQL SOCKET
 MYSQL_SOCKET=$(mysqladmin variables | grep socket | awk '{print $4}')
 
 echo "mysqli.default_socket=$MYSQL_SOCKET" >> /usr/local/php/lib/php.ini
 echo "pdo_mysql.default_socket=$MYSQL_SOCKET" >> /usr/local/php/lib/php.ini
 
 # ==============================
-# PHP-FPM OTIMIZADO
+# PHP-FPM
 # ==============================
 mkdir -p /usr/local/php/etc/php-fpm.d
 cp sapi/fpm/php-fpm.conf /usr/local/php/etc/php-fpm.conf
 
 RAM_MB=$(free -m | awk '/Mem:/ {print $2}')
-
 MAX_CHILDREN=$((RAM_MB / 60))
 
 [ "$MAX_CHILDREN" -lt 5 ] && MAX_CHILDREN=5
@@ -142,13 +135,9 @@ pm.max_requests = 300
 EOF
 
 mkdir -p /run
-/usr/local/php/sbin/php-fpm
+run_step /usr/local/php/sbin/php-fpm
+show_progress
 
-progress
-
-# ==============================
-# SOCKET CHECK
-# ==============================
 for i in {1..10}; do
     [ -S "/run/php-fpm.sock" ] && break
     sleep 1
@@ -181,75 +170,63 @@ server {
 }
 EOF
 
-systemctl restart nginx >/dev/null 2>&1
+run_step systemctl restart nginx
 
 echo "<?php echo 'Servidor OK'; ?>" > /var/www/html/index.php
 chown -R www-data:www-data /var/www/html
-
-progress
+show_progress
 
 # ==============================
-# MARIADB OTIMIZADO
+# MARIADB
 # ==============================
-systemctl start mariadb >/dev/null 2>&1
+run_step systemctl start mariadb
 
 cat > /etc/mysql/mariadb.conf.d/99-performance.cnf <<EOF
 [mysqld]
-
-# RAM
 innodb_buffer_pool_size=256M
 innodb_log_file_size=64M
 innodb_flush_method=O_DIRECT
 innodb_flush_log_at_trx_commit=2
 
-# CPU
 max_connections=40
 thread_cache_size=16
 table_open_cache=256
 
-# Temporários
 tmp_table_size=32M
 max_heap_table_size=32M
 
-# Desabilitar query cache
 query_cache_type=0
 query_cache_size=0
 
-# MyISAM
 key_buffer_size=32M
 
-# Performance
 performance_schema=OFF
 skip-name-resolve
 EOF
 
-systemctl restart mariadb >/dev/null 2>&1
+run_step systemctl restart mariadb
 
 DB_ROOT_PASS=$(openssl rand -base64 16)
 DB_USER="appuser"
 DB_PASS=$(openssl rand -base64 16)
 
-mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '$DB_ROOT_PASS';"
-
-mysql -uroot -p$DB_ROOT_PASS -e "CREATE DATABASE appdb;"
-mysql -uroot -p$DB_ROOT_PASS -e "CREATE USER '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASS';"
-mysql -uroot -p$DB_ROOT_PASS -e "GRANT ALL PRIVILEGES ON appdb.* TO '$DB_USER'@'localhost'; FLUSH PRIVILEGES;"
-
-progress
+run_step mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '$DB_ROOT_PASS';"
+run_step mysql -uroot -p$DB_ROOT_PASS -e "CREATE DATABASE appdb;"
+run_step mysql -uroot -p$DB_ROOT_PASS -e "CREATE USER '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASS';"
+run_step mysql -uroot -p$DB_ROOT_PASS -e "GRANT ALL PRIVILEGES ON appdb.* TO '$DB_USER'@'localhost'; FLUSH PRIVILEGES;"
+show_progress
 
 # ==============================
-# phpMyAdmin
+# PHPMYADMIN
 # ==============================
 cd /var/www/html
 
 rm -rf phpmyadmin phpMyAdmin-*
 
-wget -q https://www.phpmyadmin.net/downloads/phpMyAdmin-latest-all-languages.zip
-
-unzip -qq phpMyAdmin-latest-all-languages.zip
+run_step wget https://www.phpmyadmin.net/downloads/phpMyAdmin-latest-all-languages.zip
+run_step unzip phpMyAdmin-latest-all-languages.zip
 
 PMA_DIR=$(find . -maxdepth 1 -type d -name "phpMyAdmin-*")
-
 mv "$PMA_DIR" phpmyadmin
 
 cp phpmyadmin/config.sample.inc.php phpmyadmin/config.inc.php
@@ -263,18 +240,16 @@ cat >> phpmyadmin/config.inc.php <<EOF
 EOF
 
 chown -R www-data:www-data phpmyadmin
-
-progress
+show_progress
 
 # ==============================
 # TESTE
 # ==============================
 sleep 2
 
-curl -s http://localhost >/dev/null
-curl -s http://localhost/phpmyadmin >/dev/null
-
-progress
+run_step curl -s http://localhost
+run_step curl -s http://localhost/phpmyadmin
+show_progress
 
 # ==============================
 # CREDENCIAIS
@@ -290,8 +265,7 @@ EOF
 chmod 600 /root/credenciais.txt
 
 rm -f /var/www/html/phpMyAdmin-latest-all-languages.zip
-
-progress
+show_progress
 
 echo
 echo
