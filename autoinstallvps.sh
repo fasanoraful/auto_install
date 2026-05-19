@@ -198,6 +198,18 @@ server {
         try_files \$uri \$uri/ /index.php?\$query_string;
     }
 
+    location /phpmyadmin {
+        alias /usr/local/share/phpmyadmin;
+        index index.php index.html;
+
+        location ~ ^/phpmyadmin/(.+\.php)$ {
+            alias /usr/local/share/phpmyadmin/\$1;
+            include fastcgi_params;
+            fastcgi_pass unix:/run/php-fpm.sock;
+            fastcgi_param SCRIPT_FILENAME /usr/local/share/phpmyadmin/\$1;
+        }
+    }
+
     location ~ \.php$ {
         include fastcgi_params;
         fastcgi_pass unix:/run/php-fpm.sock;
@@ -251,32 +263,37 @@ run_step "Estamos instalando, aguarde..." mysql -uroot -p$DB_ROOT_PASS -e "CREAT
 run_step "Estamos instalando, aguarde..." mysql -uroot -p$DB_ROOT_PASS -e "GRANT ALL PRIVILEGES ON appdb.* TO '$DB_USER'@'localhost'; FLUSH PRIVILEGES;"
 
 # ==============================
-# phpMyAdmin
+# phpMyAdmin FORA DO HTML
 # ==============================
-cd /var/www/html
+cd /tmp
 
-rm -rf phpmyadmin phpMyAdmin-*
+rm -rf phpmyadmin phpMyAdmin-* phpMyAdmin-latest-all-languages.zip
+rm -rf /usr/local/share/phpmyadmin
 
 run_step "Estamos instalando, aguarde..." wget https://www.phpmyadmin.net/downloads/phpMyAdmin-latest-all-languages.zip
+
 run_step "Estamos instalando, aguarde..." unzip phpMyAdmin-latest-all-languages.zip
 
 PMA_DIR=$(find . -maxdepth 1 -type d -name "phpMyAdmin-*")
-mv "$PMA_DIR" phpmyadmin
 
-cp phpmyadmin/config.sample.inc.php phpmyadmin/config.inc.php
+mv "$PMA_DIR" /usr/local/share/phpmyadmin
+
+cp /usr/local/share/phpmyadmin/config.sample.inc.php /usr/local/share/phpmyadmin/config.inc.php
 
 BLOWFISH=$(openssl rand -base64 32)
 
-cat >> phpmyadmin/config.inc.php <<EOF
+cat >> /usr/local/share/phpmyadmin/config.inc.php <<EOF
 \$cfg['blowfish_secret'] = '$BLOWFISH';
 \$cfg['Servers'][1]['host'] = '127.0.0.1';
 \$cfg['Servers'][1]['connect_type'] = 'tcp';
 EOF
 
-chown -R www-data:www-data phpmyadmin
+chown -R www-data:www-data /usr/local/share/phpmyadmin
+
+rm -f /tmp/phpMyAdmin-latest-all-languages.zip
 
 # ==============================
-# Teste
+# TESTE
 # ==============================
 sleep 2
 
@@ -284,7 +301,7 @@ run_step "Estamos instalando, aguarde..." curl -s http://localhost
 run_step "Estamos instalando, aguarde..." curl -s http://localhost/phpmyadmin
 
 # ==============================
-# Credenciais
+# CREDENCIAIS
 # ==============================
 cat > /root/credenciais.txt <<EOF
 MYSQL ROOT: $DB_ROOT_PASS
@@ -295,8 +312,6 @@ URL: http://SEU_IP/phpmyadmin
 EOF
 
 chmod 600 /root/credenciais.txt
-
-rm -f /var/www/html/phpMyAdmin-latest-all-languages.zip
 
 stop_progress
 
