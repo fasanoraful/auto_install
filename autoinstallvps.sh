@@ -40,7 +40,7 @@ stop_progress() {
     fi
 
     tput cnorm 2>/dev/null || true
-    printf "\r%-100s\r"
+    printf "\r%-120s\r"
 }
 
 run_step() {
@@ -98,10 +98,12 @@ done
 
 cd /usr/local/src
 
-run_step "Estamos instalando, aguarde..." wget https://www.php.net/distributions/php-$PHP_VERSION.tar.gz
-run_step "Estamos instalando, aguarde..." tar -xzf php-$PHP_VERSION.tar.gz
+rm -rf "php-$PHP_VERSION" "php-$PHP_VERSION.tar.gz"
 
-cd php-$PHP_VERSION
+run_step "Estamos instalando, aguarde..." wget "https://www.php.net/distributions/php-$PHP_VERSION.tar.gz"
+run_step "Estamos instalando, aguarde..." tar -xzf "php-$PHP_VERSION.tar.gz"
+
+cd "php-$PHP_VERSION"
 
 run_step "Estamos instalando, aguarde..." ./configure --prefix=/usr/local/php \
 --enable-fpm \
@@ -131,16 +133,29 @@ run_step "Estamos instalando, aguarde..." ./configure --prefix=/usr/local/php \
 MAKE_THREADS=$(nproc)
 [ "$MAKE_THREADS" -gt 4 ] && MAKE_THREADS=4
 
-run_step "Estamos instalando, aguarde..." make -j$MAKE_THREADS
+run_step "Estamos instalando, aguarde..." make -j"$MAKE_THREADS"
 run_step "Estamos instalando, aguarde..." make install
 
 mkdir -p /usr/local/php/lib
 cp php.ini-production /usr/local/php/lib/php.ini
 
+# ==============================
+# PHP.INI
+# ==============================
 MYSQL_SOCKET=$(mysqladmin variables | grep socket | awk '{print $4}')
 
 echo "mysqli.default_socket=$MYSQL_SOCKET" >> /usr/local/php/lib/php.ini
 echo "pdo_mysql.default_socket=$MYSQL_SOCKET" >> /usr/local/php/lib/php.ini
+
+cat >> /usr/local/php/lib/php.ini <<EOF
+opcache.enable=1
+opcache.enable_cli=0
+opcache.memory_consumption=128
+opcache.interned_strings_buffer=16
+opcache.max_accelerated_files=10000
+opcache.validate_timestamps=1
+opcache.revalidate_freq=60
+EOF
 
 # ==============================
 # PHP-FPM
@@ -172,6 +187,7 @@ EOF
 
 mkdir -p /run
 
+pkill php-fpm >/dev/null 2>&1 || true
 run_step "Estamos instalando, aguarde..." /usr/local/php/sbin/php-fpm
 
 for i in {1..10}; do
@@ -186,6 +202,8 @@ chown www-data:www-data /run/php-fpm.sock
 # ==============================
 # NGINX
 # ==============================
+mkdir -p /var/www/html
+
 cat > /etc/nginx/sites-available/default <<EOF
 server {
     listen 80;
@@ -198,8 +216,12 @@ server {
         try_files \$uri \$uri/ /index.php?\$query_string;
     }
 
-    location /phpmyadmin {
-        alias /usr/local/share/phpmyadmin;
+    location = /phpmyadmin {
+        return 301 /phpmyadmin/;
+    }
+
+    location /phpmyadmin/ {
+        alias /usr/local/share/phpmyadmin/;
         index index.php index.html;
 
         location ~ ^/phpmyadmin/(.+\.php)$ {
@@ -218,10 +240,10 @@ server {
 }
 EOF
 
-run_step "Estamos instalando, aguarde..." systemctl restart nginx
-
 echo "<?php echo 'Servidor OK'; ?>" > /var/www/html/index.php
 chown -R www-data:www-data /var/www/html
+
+run_step "Estamos instalando, aguarde..." systemctl restart nginx
 
 # ==============================
 # MARIADB
@@ -258,9 +280,9 @@ DB_USER="appuser"
 DB_PASS=$(openssl rand -base64 16)
 
 run_step "Estamos instalando, aguarde..." mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '$DB_ROOT_PASS';"
-run_step "Estamos instalando, aguarde..." mysql -uroot -p$DB_ROOT_PASS -e "CREATE DATABASE appdb;"
-run_step "Estamos instalando, aguarde..." mysql -uroot -p$DB_ROOT_PASS -e "CREATE USER '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASS';"
-run_step "Estamos instalando, aguarde..." mysql -uroot -p$DB_ROOT_PASS -e "GRANT ALL PRIVILEGES ON appdb.* TO '$DB_USER'@'localhost'; FLUSH PRIVILEGES;"
+run_step "Estamos instalando, aguarde..." mysql -uroot -p"$DB_ROOT_PASS" -e "CREATE DATABASE IF NOT EXISTS appdb;"
+run_step "Estamos instalando, aguarde..." mysql -uroot -p"$DB_ROOT_PASS" -e "CREATE USER IF NOT EXISTS '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASS';"
+run_step "Estamos instalando, aguarde..." mysql -uroot -p"$DB_ROOT_PASS" -e "GRANT ALL PRIVILEGES ON appdb.* TO '$DB_USER'@'localhost'; FLUSH PRIVILEGES;"
 
 # ==============================
 # phpMyAdmin FORA DO HTML
@@ -268,13 +290,19 @@ run_step "Estamos instalando, aguarde..." mysql -uroot -p$DB_ROOT_PASS -e "GRANT
 cd /tmp
 
 rm -rf phpmyadmin phpMyAdmin-* phpMyAdmin-latest-all-languages.zip
+
+rm -rf /var/www/html/phpmyadmin
+rm -rf /var/www/html/phpMyAdmin-*
+
 rm -rf /usr/local/share/phpmyadmin
+mkdir -p /usr/local/share
 
 run_step "Estamos instalando, aguarde..." wget https://www.phpmyadmin.net/downloads/phpMyAdmin-latest-all-languages.zip
-
 run_step "Estamos instalando, aguarde..." unzip phpMyAdmin-latest-all-languages.zip
 
-PMA_DIR=$(find . -maxdepth 1 -type d -name "phpMyAdmin-*")
+PMA_DIR=$(find /tmp -maxdepth 1 -type d -name "phpMyAdmin-*" | head -n 1)
+
+[ -z "$PMA_DIR" ] && exit 1
 
 mv "$PMA_DIR" /usr/local/share/phpmyadmin
 
@@ -284,13 +312,18 @@ BLOWFISH=$(openssl rand -base64 32)
 
 cat >> /usr/local/share/phpmyadmin/config.inc.php <<EOF
 \$cfg['blowfish_secret'] = '$BLOWFISH';
-\$cfg['Servers'][1]['host'] = '127.0.0.1';
-\$cfg['Servers'][1]['connect_type'] = 'tcp';
+\$cfg['Servers'][$i]['host'] = 'localhost';
+\$cfg['Servers'][$i]['connect_type'] = 'tcp';
+\$cfg['TempDir'] = '/usr/local/share/phpmyadmin/tmp';
 EOF
 
+mkdir -p /usr/local/share/phpmyadmin/tmp
 chown -R www-data:www-data /usr/local/share/phpmyadmin
+chmod 750 /usr/local/share/phpmyadmin/tmp
 
 rm -f /tmp/phpMyAdmin-latest-all-languages.zip
+
+run_step "Estamos instalando, aguarde..." systemctl restart nginx
 
 # ==============================
 # TESTE
@@ -298,7 +331,7 @@ rm -f /tmp/phpMyAdmin-latest-all-languages.zip
 sleep 2
 
 run_step "Estamos instalando, aguarde..." curl -s http://localhost
-run_step "Estamos instalando, aguarde..." curl -s http://localhost/phpmyadmin
+run_step "Estamos instalando, aguarde..." curl -s http://localhost/phpmyadmin/
 
 # ==============================
 # CREDENCIAIS
@@ -308,7 +341,8 @@ MYSQL ROOT: $DB_ROOT_PASS
 DB: appdb
 USER: $DB_USER
 PASS: $DB_PASS
-URL: http://SEU_IP/phpmyadmin
+URL: http://SEU_IP/phpmyadmin/
+PHPMYADMIN_PATH: /usr/local/share/phpmyadmin
 EOF
 
 chmod 600 /root/credenciais.txt
